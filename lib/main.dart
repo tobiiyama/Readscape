@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
 import 'topbooks_screen.dart';
 
 void main() {
@@ -16,7 +20,7 @@ class ReadscapeApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         fontFamily: 'Georgia',
-        scaffoldBackgroundColor: const Color(0xFFF9E8A2), 
+        scaffoldBackgroundColor: const Color(0xFFF9E8A2),
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF7A1F2B),
           primary: const Color(0xFF7A1F2B),
@@ -39,6 +43,18 @@ const Color mutedText = Color(0xFF806F65);
 const Color border = Color(0xFFD9CBBE);
 
 // ============================================================
+// EMAIL VALIDATION
+// ============================================================
+
+bool isValidEmail(String email) {
+  final emailRegex = RegExp(
+    r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+  );
+
+  return emailRegex.hasMatch(email);
+}
+
+// ============================================================
 // WELCOME SCREEN
 // ============================================================
 
@@ -54,7 +70,6 @@ class WelcomeScreen extends StatelessWidget {
           children: [
             const SizedBox(height: 65),
 
-            // LOGO AND BUTTONS
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -68,7 +83,6 @@ class WelcomeScreen extends StatelessWidget {
 
                   const SizedBox(height: 20),
 
-                  // SIGN UP
                   SizedBox(
                     width: 220,
                     height: 50,
@@ -103,7 +117,6 @@ class WelcomeScreen extends StatelessWidget {
 
                   const SizedBox(height: 15),
 
-                  // LOG IN
                   SizedBox(
                     width: 220,
                     height: 50,
@@ -237,6 +250,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController passwordController =
       TextEditingController();
 
+  String? emailError;
+
   @override
   void dispose() {
     emailController.dispose();
@@ -245,8 +260,14 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _login() {
-    if (emailController.text.trim().isEmpty ||
-        passwordController.text.trim().isEmpty) {
+    final email = emailController.text.trim();
+    final password = passwordController.text.trim();
+
+    setState(() {
+      emailError = null;
+    });
+
+    if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -254,6 +275,14 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       );
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      setState(() {
+        emailError =
+            'Please enter a valid email address.';
+      });
       return;
     }
 
@@ -311,9 +340,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: emailController,
                 keyboardType:
                     TextInputType.emailAddress,
+                onChanged: (_) {
+                  if (emailError != null) {
+                    setState(() {
+                      emailError = null;
+                    });
+                  }
+                },
                 decoration: _inputDecoration(
                   hintText: 'Enter your email',
                   icon: Icons.email_outlined,
+                  errorText: emailError,
                 ),
               ),
 
@@ -420,9 +457,11 @@ class _LoginScreenState extends State<LoginScreen> {
     required String hintText,
     required IconData icon,
     Widget? suffixIcon,
+    String? errorText,
   }) {
     return InputDecoration(
       hintText: hintText,
+      errorText: errorText,
       hintStyle: const TextStyle(
         color: mutedText,
         fontSize: 14,
@@ -466,7 +505,7 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 // ============================================================
-// SIGN UP SCREEN
+// SIGN UP SCREEN — CREATE ACCOUNT
 // ============================================================
 
 class SignUpScreen extends StatefulWidget {
@@ -480,41 +519,55 @@ class SignUpScreen extends StatefulWidget {
 class _SignUpScreenState extends State<SignUpScreen> {
   bool obscurePassword = true;
 
-  final TextEditingController usernameController =
-      TextEditingController();
-
   final TextEditingController emailController =
       TextEditingController();
 
   final TextEditingController passwordController =
       TextEditingController();
 
+  String? emailError;
+
   @override
   void dispose() {
-    usernameController.dispose();
     emailController.dispose();
     passwordController.dispose();
     super.dispose();
   }
 
   void _createAccount() {
-    if (usernameController.text.trim().isEmpty ||
-        emailController.text.trim().isEmpty ||
-        passwordController.text.trim().isEmpty) {
+    final email = emailController.text.trim();
+    final password = passwordController.text.trim();
+
+    setState(() {
+      emailError = null;
+    });
+
+    if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Please fill in all required fields.',
+            'Please enter your email and password.',
           ),
         ),
       );
       return;
     }
 
-    Navigator.pushReplacement(
+    if (!isValidEmail(email)) {
+      setState(() {
+        emailError =
+            'Please enter a valid email address.';
+      });
+      return;
+    }
+
+    // Account creation is successful for now.
+    // The real database will be connected later.
+    Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => const TopBooksScreen(),
+        builder: (context) =>
+            const ProfileSetupScreen(),
       ),
     );
   }
@@ -557,20 +610,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
               const SizedBox(height: 20),
 
-              _inputLabel('Username'),
-
-              const SizedBox(height: 8),
-
-              TextField(
-                controller: usernameController,
-                decoration: _inputDecoration(
-                  hintText: 'Enter your username',
-                  icon: Icons.person_outline,
-                ),
-              ),
-
-              const SizedBox(height: 18),
-
               _inputLabel('Email'),
 
               const SizedBox(height: 8),
@@ -579,9 +618,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 controller: emailController,
                 keyboardType:
                     TextInputType.emailAddress,
+                onChanged: (_) {
+                  if (emailError != null) {
+                    setState(() {
+                      emailError = null;
+                    });
+                  }
+                },
                 decoration: _inputDecoration(
                   hintText: 'Enter your email',
                   icon: Icons.email_outlined,
+                  errorText: emailError,
                 ),
               ),
 
@@ -782,9 +829,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
     required String hintText,
     required IconData icon,
     Widget? suffixIcon,
+    String? errorText,
   }) {
     return InputDecoration(
       hintText: hintText,
+      errorText: errorText,
       hintStyle: const TextStyle(
         color: mutedText,
         fontSize: 14,
@@ -827,3 +876,297 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 }
 
+// ============================================================
+// PROFILE SETUP SCREEN
+// ============================================================
+
+class ProfileSetupScreen extends StatefulWidget {
+  const ProfileSetupScreen({super.key});
+
+  @override
+  State<ProfileSetupScreen> createState() =>
+      _ProfileSetupScreenState();
+}
+
+class _ProfileSetupScreenState
+    extends State<ProfileSetupScreen> {
+  final TextEditingController usernameController =
+      TextEditingController();
+
+  Uint8List? profileImage;
+
+  bool usernameError = false;
+  bool pictureError = false;
+
+  @override
+  void dispose() {
+    usernameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _choosePicture() async {
+    final ImagePicker picker = ImagePicker();
+
+    final XFile? pickedImage =
+        await picker.pickImage(
+      source: ImageSource.gallery,
+    );
+
+    if (pickedImage == null) {
+      return;
+    }
+
+    final Uint8List imageBytes =
+        await pickedImage.readAsBytes();
+
+    setState(() {
+      profileImage = imageBytes;
+      pictureError = false;
+    });
+  }
+
+  void _continue() {
+    final username =
+        usernameController.text.trim();
+
+    setState(() {
+      usernameError = username.isEmpty;
+      pictureError = profileImage == null;
+    });
+
+    if (username.isEmpty || profileImage == null) {
+      return;
+    }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const TopBooksScreen(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: background,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 30),
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              const AuthTop(),
+
+              const Center(
+                child: Text(
+                  'Set Up Your Profile',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: maroon,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              const Center(
+                child: Text(
+                  'Choose a profile picture and username',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: mutedText,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
+              Center(
+                child: Column(
+                  children: [
+                    Container(
+                      width: 125,
+                      height: 125,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: lightCream,
+                        border: Border.all(
+                          color: maroon,
+                          width: 2,
+                        ),
+                      ),
+                      child: ClipOval(
+                        child: profileImage != null
+                            ? Image.memory(
+                                profileImage!,
+                                fit: BoxFit.cover,
+                              )
+                            : const Icon(
+                                Icons.person,
+                                color: maroon,
+                                size: 65,
+                              ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    OutlinedButton.icon(
+                      onPressed: _choosePicture,
+                      style:
+                          OutlinedButton.styleFrom(
+                        foregroundColor: maroon,
+                        side: const BorderSide(
+                          color: maroon,
+                        ),
+                        shape:
+                            RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.circular(28),
+                        ),
+                      ),
+                      icon: const Icon(
+                        Icons.photo_library_outlined,
+                      ),
+                      label: const Text(
+                        'Choose Picture',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+
+                    if (pictureError)
+                      const Padding(
+                        padding:
+                            EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Please choose a profile picture.',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
+              const Text(
+                'Username',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: maroon,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              TextField(
+                controller: usernameController,
+                onChanged: (_) {
+                  if (usernameError) {
+                    setState(() {
+                      usernameError = false;
+                    });
+                  }
+                },
+                decoration: _profileInputDecoration(
+                  hintText: 'Choose a username',
+                  icon: Icons.person_outline,
+                  errorText: usernameError
+                      ? 'Please enter a username.'
+                      : null,
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: maroon,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(30),
+                    ),
+                  ),
+                  onPressed: _continue,
+                  child: const Text(
+                    'Continue',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 30),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _profileInputDecoration({
+    required String hintText,
+    required IconData icon,
+    String? errorText,
+  }) {
+    return InputDecoration(
+      hintText: hintText,
+      errorText: errorText,
+      hintStyle: const TextStyle(
+        color: mutedText,
+        fontSize: 14,
+      ),
+      prefixIcon: Icon(
+        icon,
+        color: maroon,
+      ),
+      filled: true,
+      fillColor: lightCream,
+      contentPadding:
+          const EdgeInsets.symmetric(
+        horizontal: 20,
+        vertical: 16,
+      ),
+      border: OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(28),
+        borderSide: const BorderSide(
+          color: border,
+        ),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(28),
+        borderSide: const BorderSide(
+          color: border,
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(28),
+        borderSide: const BorderSide(
+          color: maroon,
+          width: 2,
+        ),
+      ),
+    );
+  }
+}

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'ratedbooks_screen.dart';
 import 'collection_screen.dart';
+import 'main.dart';
 
 class SideMenu extends StatelessWidget {
   const SideMenu({super.key});
@@ -167,7 +168,14 @@ class SideMenu extends StatelessWidget {
                 Icons.logout,
                 'Log Out',
                 () {
-                  Navigator.pop(context);
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          const WelcomeScreen(),
+                    ),
+                    (route) => false,
+                  );
                 },
               ),
             ],
