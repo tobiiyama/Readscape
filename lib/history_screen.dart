@@ -1,23 +1,32 @@
 import 'package:flutter/material.dart';
+
 import 'topbooks_screen.dart';
 import 'search_screen.dart';
 import 'favorites_screen.dart';
 import 'notifications_screen.dart';
+import 'sidemenu_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
 
   @override
-  State<HistoryScreen> createState() => _HistoryScreenState();
+  State<HistoryScreen> createState() =>
+      _HistoryScreenState();
 }
 
-class _HistoryScreenState extends State<HistoryScreen> {
-  static const Color cream = Color(0xFFF9E8A2);
-  static const Color maroon = Color(0xFF7A1F2B);
+class _HistoryScreenState
+    extends State<HistoryScreen> {
+  static const Color cream =
+      Color(0xFFF9E8A2);
 
-  final List<Map<String, dynamic>> historyBooks = const [
+  static const Color maroon =
+      Color(0xFF7A1F2B);
+
+  final List<Map<String, dynamic>> historyBooks =
+      const [
     {
-      'title': 'The Seven Husbands of Evelyn Hugo',
+      'title':
+          'The Seven Husbands of Evelyn Hugo',
       'author': 'Taylor Jenkins Reid',
       'rating': 5.0,
       'lastRead': 'September 28, 2026',
@@ -27,7 +36,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       'author': 'Rachel Reid',
       'rating': 4.5,
       'lastRead': 'September 24, 2026',
-      'image': 'assets/images/heated_rivalry.jpg',
+      'image':
+          'assets/images/heated_rivalry.jpg',
     },
     {
       'title': 'Fourth Wing',
@@ -48,7 +58,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       'lastRead': 'September 10, 2026',
     },
     {
-      'title': 'A Court of Thorns and Roses',
+      'title':
+          'A Court of Thorns and Roses',
       'author': 'Sarah J. Maas',
       'rating': 4.0,
       'lastRead': 'September 5, 2026',
@@ -73,6 +84,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: maroon,
+      drawer: const SideMenu(),
       body: SafeArea(
         child: Column(
           children: [
@@ -86,17 +98,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
                 children: [
                   const Padding(
-                    padding: EdgeInsets.symmetric(
+                    padding:
+                        EdgeInsets.symmetric(
                       horizontal: 16,
                     ),
                     child: Text(
                       'History',
-                      textAlign: TextAlign.center,
+                      textAlign:
+                          TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
                         fontFamily: 'Georgia',
                         fontSize: 24,
-                        fontWeight: FontWeight.bold,
+                        fontWeight:
+                            FontWeight.bold,
                       ),
                     ),
                   ),
@@ -104,17 +119,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   const SizedBox(height: 8),
 
                   const Padding(
-                    padding: EdgeInsets.symmetric(
+                    padding:
+                        EdgeInsets.symmetric(
                       horizontal: 16,
                     ),
                     child: Text(
                       "Explore your past reads and see how far you've come as a reader.",
-                      textAlign: TextAlign.center,
+                      textAlign:
+                          TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
                         fontFamily: 'Georgia',
                         fontSize: 12,
-                        fontStyle: FontStyle.italic,
+                        fontStyle:
+                            FontStyle.italic,
                       ),
                     ),
                   ),
@@ -122,7 +140,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   const SizedBox(height: 24),
 
                   ...historyBooks.map(
-                    (book) => _historyBookCard(book),
+                    (book) =>
+                        _historyBookCard(book),
                   ),
                 ],
               ),
@@ -133,7 +152,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  Widget _buildTopNavigation(BuildContext context) {
+  Widget _buildTopNavigation(
+      BuildContext context) {
     return Container(
       height: 64,
       color: cream,
@@ -141,18 +161,27 @@ class _HistoryScreenState extends State<HistoryScreen> {
         children: [
           SizedBox(
             width: 48,
-            child: IconButton(
-              icon: const Icon(
-                Icons.menu,
-                color: maroon,
-              ),
-              onPressed: () {},
+            child: Builder(
+              builder: (drawerContext) {
+                return IconButton(
+                  icon: const Icon(
+                    Icons.menu,
+                    color: maroon,
+                  ),
+                  onPressed: () {
+                    Scaffold.of(
+                      drawerContext,
+                    ).openDrawer();
+                  },
+                );
+              },
             ),
           ),
 
           Expanded(
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
               children: [
                 _navText(
                   'Top 10',
@@ -202,7 +231,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           SizedBox(
             width: 114,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisAlignment:
+                  MainAxisAlignment.end,
               children: [
                 SizedBox(
                   width: 38,
@@ -274,7 +304,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return TextButton(
       onPressed: onPressed,
       style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(
+        padding:
+            const EdgeInsets.symmetric(
           horizontal: 4,
         ),
         minimumSize: Size.zero,
@@ -300,24 +331,29 @@ class _HistoryScreenState extends State<HistoryScreen> {
     Map<String, dynamic> book,
   ) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
+      padding:
+          const EdgeInsets.symmetric(
         horizontal: 16,
         vertical: 8,
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Container(
             width: 75,
             height: 110,
             decoration: BoxDecoration(
               color: cream,
-              borderRadius: BorderRadius.circular(4),
+              borderRadius:
+                  BorderRadius.circular(4),
             ),
             child: book['image'] != null
                 ? ClipRRect(
                     borderRadius:
-                        BorderRadius.circular(4),
+                        BorderRadius.circular(
+                      4,
+                    ),
                     child: Image.asset(
                       book['image'],
                       fit: BoxFit.cover,
@@ -343,7 +379,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     color: Colors.white,
                     fontFamily: 'Georgia',
                     fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                    fontWeight:
+                        FontWeight.bold,
                   ),
                 ),
 
@@ -362,11 +399,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
                 Row(
                   children: [
-                    ..._ratingStars(book['rating']),
+                    ..._ratingStars(
+                      book['rating'],
+                    ),
                     const SizedBox(width: 6),
                     Text(
                       '${book['rating']}',
-                      style: const TextStyle(
+                      style:
+                          const TextStyle(
                         color: Colors.white,
                         fontFamily: 'Georgia',
                         fontSize: 11,
@@ -379,7 +419,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
                 Text(
                   'Last read: ${book['lastRead']}',
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     color: Colors.white,
                     fontFamily: 'Georgia',
                     fontSize: 11,
@@ -393,7 +434,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  List<Widget> _ratingStars(double rating) {
+  List<Widget> _ratingStars(
+    double rating,
+  ) {
     List<Widget> stars = [];
 
     for (int i = 1; i <= 5; i++) {

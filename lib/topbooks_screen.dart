@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+
 import 'search_screen.dart';
 import 'history_screen.dart';
 import 'favorites_screen.dart';
 import 'notifications_screen.dart';
+import 'sidemenu_screen.dart';
 
 class TopBooksScreen extends StatefulWidget {
   const TopBooksScreen({super.key});
@@ -85,6 +87,7 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: maroon,
+      drawer: const SideMenu(),
       body: SafeArea(
         child: Column(
           children: [
@@ -98,7 +101,9 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
                 ),
                 children: [
                   const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 16,
+                    ),
                     child: Text(
                       'Top 10 Books',
                       textAlign: TextAlign.center,
@@ -114,7 +119,9 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
                   const SizedBox(height: 8),
 
                   const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 16,
+                    ),
                     child: Text(
                       "Browse today's most popular and highest-rated books",
                       textAlign: TextAlign.center,
@@ -149,12 +156,18 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
         children: [
           SizedBox(
             width: 48,
-            child: IconButton(
-              icon: const Icon(
-                Icons.menu,
-                color: maroon,
-              ),
-              onPressed: () {},
+            child: Builder(
+              builder: (drawerContext) {
+                return IconButton(
+                  icon: const Icon(
+                    Icons.menu,
+                    color: maroon,
+                  ),
+                  onPressed: () {
+                    Scaffold.of(drawerContext).openDrawer();
+                  },
+                );
+              },
             ),
           ),
 
@@ -210,7 +223,8 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
           SizedBox(
             width: 114,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisAlignment:
+                  MainAxisAlignment.end,
               children: [
                 SizedBox(
                   width: 38,
@@ -313,7 +327,8 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
         vertical: 8,
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: 32,
@@ -335,7 +350,8 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
             width: 75,
             height: 110,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
+              borderRadius:
+                  BorderRadius.circular(4),
               color: cream,
             ),
             child: book['image'] != null

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+
 import 'topbooks_screen.dart';
 import 'history_screen.dart';
 import 'favorites_screen.dart';
 import 'search_screen.dart';
+import 'sidemenu_screen.dart';
 
-class NotificationsScreen extends StatefulWidget {
+class NotificationsScreen
+    extends StatefulWidget {
   const NotificationsScreen({super.key});
 
   @override
@@ -14,10 +17,14 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState
     extends State<NotificationsScreen> {
-  static const Color cream = Color(0xFFF9E8A2);
-  static const Color maroon = Color(0xFF7A1F2B);
+  static const Color cream =
+      Color(0xFFF9E8A2);
 
-  final List<Map<String, dynamic>> notifications = [
+  static const Color maroon =
+      Color(0xFF7A1F2B);
+
+  final List<Map<String, dynamic>>
+      notifications = [
     {
       'icon': Icons.favorite,
       'title': 'Added to Favorites',
@@ -54,6 +61,7 @@ class _NotificationsScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: maroon,
+      drawer: const SideMenu(),
       body: SafeArea(
         child: Column(
           children: [
@@ -67,17 +75,20 @@ class _NotificationsScreenState
                 ),
                 children: [
                   const Padding(
-                    padding: EdgeInsets.symmetric(
+                    padding:
+                        EdgeInsets.symmetric(
                       horizontal: 16,
                     ),
                     child: Text(
                       'Notifications',
-                      textAlign: TextAlign.center,
+                      textAlign:
+                          TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
                         fontFamily: 'Georgia',
                         fontSize: 24,
-                        fontWeight: FontWeight.bold,
+                        fontWeight:
+                            FontWeight.bold,
                       ),
                     ),
                   ),
@@ -85,17 +96,20 @@ class _NotificationsScreenState
                   const SizedBox(height: 8),
 
                   const Padding(
-                    padding: EdgeInsets.symmetric(
+                    padding:
+                        EdgeInsets.symmetric(
                       horizontal: 16,
                     ),
                     child: Text(
                       'Stay updated on your reading journey and favorite books.',
-                      textAlign: TextAlign.center,
+                      textAlign:
+                          TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
                         fontFamily: 'Georgia',
                         fontSize: 12,
-                        fontStyle: FontStyle.italic,
+                        fontStyle:
+                            FontStyle.italic,
                       ),
                     ),
                   ),
@@ -104,7 +118,9 @@ class _NotificationsScreenState
 
                   ...notifications.map(
                     (notification) =>
-                        _notificationCard(notification),
+                        _notificationCard(
+                      notification,
+                    ),
                   ),
                 ],
               ),
@@ -115,7 +131,8 @@ class _NotificationsScreenState
     );
   }
 
-  Widget _buildTopNavigation(BuildContext context) {
+  Widget _buildTopNavigation(
+      BuildContext context) {
     return Container(
       height: 64,
       color: cream,
@@ -123,18 +140,27 @@ class _NotificationsScreenState
         children: [
           SizedBox(
             width: 48,
-            child: IconButton(
-              icon: const Icon(
-                Icons.menu,
-                color: maroon,
-              ),
-              onPressed: () {},
+            child: Builder(
+              builder: (drawerContext) {
+                return IconButton(
+                  icon: const Icon(
+                    Icons.menu,
+                    color: maroon,
+                  ),
+                  onPressed: () {
+                    Scaffold.of(
+                      drawerContext,
+                    ).openDrawer();
+                  },
+                );
+              },
             ),
           ),
 
           Expanded(
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
               children: [
                 _navText(
                   'Top 10',
@@ -188,7 +214,8 @@ class _NotificationsScreenState
           SizedBox(
             width: 114,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisAlignment:
+                  MainAxisAlignment.end,
               children: [
                 SizedBox(
                   width: 38,
@@ -252,7 +279,8 @@ class _NotificationsScreenState
     return TextButton(
       onPressed: onPressed,
       style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(
+        padding:
+            const EdgeInsets.symmetric(
           horizontal: 4,
         ),
         minimumSize: Size.zero,
@@ -278,18 +306,22 @@ class _NotificationsScreenState
     Map<String, dynamic> notification,
   ) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
+      padding:
+          const EdgeInsets.symmetric(
         horizontal: 16,
         vertical: 6,
       ),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding:
+            const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: cream,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius:
+              BorderRadius.circular(8),
         ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
             Icon(
               notification['icon'],
@@ -306,11 +338,14 @@ class _NotificationsScreenState
                 children: [
                   Text(
                     notification['title'],
-                    style: const TextStyle(
+                    style:
+                        const TextStyle(
                       color: maroon,
-                      fontFamily: 'Georgia',
+                      fontFamily:
+                          'Georgia',
                       fontSize: 14,
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                          FontWeight.bold,
                     ),
                   ),
 
@@ -318,9 +353,11 @@ class _NotificationsScreenState
 
                   Text(
                     notification['message'],
-                    style: const TextStyle(
+                    style:
+                        const TextStyle(
                       color: maroon,
-                      fontFamily: 'Georgia',
+                      fontFamily:
+                          'Georgia',
                       fontSize: 12,
                     ),
                   ),
@@ -329,11 +366,14 @@ class _NotificationsScreenState
 
                   Text(
                     notification['time'],
-                    style: const TextStyle(
+                    style:
+                        const TextStyle(
                       color: maroon,
-                      fontFamily: 'Georgia',
+                      fontFamily:
+                          'Georgia',
                       fontSize: 10,
-                      fontStyle: FontStyle.italic,
+                      fontStyle:
+                          FontStyle.italic,
                     ),
                   ),
                 ],

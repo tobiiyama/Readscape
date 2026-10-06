@@ -1,18 +1,23 @@
 import 'package:flutter/material.dart';
+
 import 'topbooks_screen.dart';
 import 'history_screen.dart';
 import 'favorites_screen.dart';
 import 'notifications_screen.dart';
+import 'sidemenu_screen.dart';
 
-// Shared search history.
-// This stays available when SearchScreen is recreated.
+// ============================================================
+// SEARCH HISTORY
+// ============================================================
+
 final List<String> searchHistory = [];
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
 
   @override
-  State<SearchScreen> createState() => _SearchScreenState();
+  State<SearchScreen> createState() =>
+      _SearchScreenState();
 }
 
 class _SearchScreenState extends State<SearchScreen> {
@@ -22,57 +27,35 @@ class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController searchController =
       TextEditingController();
 
-  final List<Map<String, dynamic>> books = const [
+  bool hasSearched = false;
+
+  // ============================================================
+  // BOOKS
+  // ============================================================
+
+  final List<Map<String, dynamic>> books = [
     {
-      'title': 'The Seven Husbands of Evelyn Hugo',
-      'author': 'Taylor Jenkins Reid',
-      'rating': 5.0,
+      'title': 'Harry Potter and the Chamber of Secrets',
+      'author': 'J.K. Rowling',
+      'image':
+          'assets/images/harry_potter_chamber_of_secrets.jpg',
     },
     {
-      'title': 'Heated Rivalry',
-      'author': 'Rachel Reid',
-      'rating': 4.5,
-      'image': 'assets/images/heated_rivalry.jpg',
+      'title': 'Credence',
+      'author': 'Penelope Douglas',
+      'image': 'assets/images/credence.jpg',
     },
     {
-      'title': 'Fourth Wing',
-      'author': 'Rebecca Yarros',
-      'rating': 4.0,
+      'title': 'Song of Ice and Fire',
+      'author': 'George R.R. Martin',
+      'image':
+          'assets/images/song_of_ice_and_fire.jpg',
     },
     {
-      'title': 'The Song of Achilles',
-      'author': 'Madeline Miller',
-      'rating': 3.5,
-    },
-    {
-      'title': 'It Ends with Us',
-      'author': 'Colleen Hoover',
-      'rating': 3.0,
-    },
-    {
-      'title': 'A Court of Thorns and Roses',
-      'author': 'Sarah J. Maas',
-      'rating': 4.5,
-    },
-    {
-      'title': 'The Love Hypothesis',
-      'author': 'Ali Hazelwood',
-      'rating': 3.0,
-    },
-    {
-      'title': 'Verity',
-      'author': 'Colleen Hoover',
-      'rating': 2.5,
-    },
-    {
-      'title': 'Red, White & Royal Blue',
-      'author': 'Casey McQuiston',
-      'rating': 4.0,
-    },
-    {
-      'title': 'The Midnight Library',
-      'author': 'Matt Haig',
-      'rating': 3.5,
+      'title': 'Fire and Blood',
+      'author': 'George R.R. Martin',
+      'image':
+          'assets/images/fire_and_blood.jpg',
     },
   ];
 
@@ -84,45 +67,58 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
-  void performSearch([String? value]) {
-    final search = (value ?? searchController.text)
-        .trim()
-        .toLowerCase();
+  // ============================================================
+  // SEARCH
+  // ============================================================
 
-    if (search.isEmpty) {
-      setState(() {
-        searchResults = [];
-      });
+  void performSearch([String? value]) {
+    final entered =
+        (value ?? searchController.text).trim();
+
+    if (entered.isEmpty) {
       return;
     }
 
-    if (!searchHistory.contains(search)) {
-      searchHistory.insert(0, search);
-    }
+    final search = entered.toLowerCase();
 
-    final results = search.length < 2
-        ? <Map<String, dynamic>>[]
-        : books.where((book) {
-            final title =
-                book['title'].toString().toLowerCase();
-            final author =
-                book['author'].toString().toLowerCase();
+    searchHistory.removeWhere(
+      (item) => item.toLowerCase() == search,
+    );
 
-            return title.contains(search) ||
-                author.contains(search);
-          }).toList();
+    searchHistory.insert(0, entered);
+
+    final results = books.where((book) {
+      final title =
+          book['title'].toString().toLowerCase();
+
+      final author =
+          book['author'].toString().toLowerCase();
+
+      return title.contains(search) ||
+          author.contains(search);
+    }).toList();
 
     setState(() {
+      hasSearched = true;
       searchResults = results;
-      searchController.text = search;
-      searchController.selection =
-          TextSelection.fromPosition(
-        TextPosition(
-          offset: searchController.text.length,
-        ),
-      );
     });
   }
+
+  // ============================================================
+  // RETURN TO SEARCH SCREEN
+  // ============================================================
+
+  void returnToSearch() {
+    setState(() {
+      hasSearched = false;
+      searchResults = [];
+      searchController.clear();
+    });
+  }
+
+  // ============================================================
+  // REMOVE ONE HISTORY ITEM
+  // ============================================================
 
   void removeHistoryItem(String item) {
     setState(() {
@@ -130,148 +126,356 @@ class _SearchScreenState extends State<SearchScreen> {
     });
   }
 
+  // ============================================================
+  // CLEAR ALL HISTORY
+  // ============================================================
+
   void clearHistory() {
     setState(() {
       searchHistory.clear();
     });
   }
 
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
-    final hasSearched =
-        searchController.text.trim().isNotEmpty;
+    return PopScope(
+      canPop: !hasSearched,
+      onPopInvokedWithResult:
+          (didPop, result) {
+        if (!didPop && hasSearched) {
+          returnToSearch();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: maroon,
+        drawer: const SideMenu(),
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildTopNavigation(context),
 
-    return Scaffold(
-      backgroundColor: maroon,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildTopNavigation(context),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 28),
 
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.only(
-                  top: 24,
-                  bottom: 24,
+                      // SEARCH BAR
+                      Padding(
+                        padding:
+                            const EdgeInsets.symmetric(
+                          horizontal: 32,
+                        ),
+                        child: SizedBox(
+                          height: 40,
+                          child: TextField(
+                            controller:
+                                searchController,
+                            onSubmitted:
+                                performSearch,
+                            textInputAction:
+                                TextInputAction.search,
+                            style:
+                                const TextStyle(
+                              color: Colors.white,
+                              fontFamily: 'Georgia',
+                              fontSize: 12,
+                            ),
+                            decoration:
+                                InputDecoration(
+                              hintText: 'Search',
+                              hintStyle:
+                                  const TextStyle(
+                                color: Colors.white,
+                                fontFamily:
+                                    'Georgia',
+                                fontSize: 12,
+                              ),
+                              prefixIcon:
+                                  const Icon(
+                                Icons.search,
+                                color:
+                                    Colors.white,
+                                size: 19,
+                              ),
+                              contentPadding:
+                                  const EdgeInsets
+                                      .symmetric(
+                                vertical: 0,
+                              ),
+                              enabledBorder:
+                                  OutlineInputBorder(
+                                borderRadius:
+                                    BorderRadius
+                                        .circular(
+                                  20,
+                                ),
+                                borderSide:
+                                    const BorderSide(
+                                  color:
+                                      Colors.white,
+                                  width: 1.5,
+                                ),
+                              ),
+                              focusedBorder:
+                                  OutlineInputBorder(
+                                borderRadius:
+                                    BorderRadius
+                                        .circular(
+                                  20,
+                                ),
+                                borderSide:
+                                    const BorderSide(
+                                  color:
+                                      Colors.white,
+                                  width: 1.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 14),
+
+                      if (!hasSearched)
+                        _buildSearchHistory(),
+
+                      if (hasSearched)
+                        _buildSearchResults(),
+
+                      const SizedBox(height: 20),
+                    ],
+                  ),
                 ),
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                    ),
-                    child: Text(
-                      'Search',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontFamily: 'Georgia',
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  const Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                    ),
-                    child: Text(
-                      'Find your next escape through books.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontFamily: 'Georgia',
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                    ),
-                    child: TextField(
-                      controller: searchController,
-                      onSubmitted: performSearch,
-                      style: const TextStyle(
-                        color: maroon,
-                        fontFamily: 'Georgia',
-                        fontSize: 13,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Search books or authors',
-                        hintStyle: const TextStyle(
-                          color: maroon,
-                          fontFamily: 'Georgia',
-                          fontSize: 13,
-                        ),
-                        filled: true,
-                        fillColor: cream,
-                        prefixIcon: const Icon(
-                          Icons.search,
-                          color: maroon,
-                        ),
-                        suffixIcon: IconButton(
-                          icon: const Icon(
-                            Icons.arrow_forward,
-                            color: maroon,
-                          ),
-                          onPressed: performSearch,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(8),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  if (hasSearched)
-                    if (searchResults.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 16,
-                        ),
-                        child: Text(
-                          'No results found.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontFamily: 'Georgia',
-                            fontSize: 14,
-                          ),
-                        ),
-                      )
-                    else
-                      ...searchResults.map(
-                        (book) => _bookCard(book),
-                      ),
-
-                  if (!hasSearched &&
-                      searchHistory.isNotEmpty)
-                    _buildSearchHistory(),
-
-                  if (!hasSearched &&
-                      searchHistory.isEmpty)
-                    const SizedBox.shrink(),
-                ],
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildTopNavigation(BuildContext context) {
+  // ============================================================
+  // SEARCH HISTORY
+  // ============================================================
+
+  Widget _buildSearchHistory() {
+    if (searchHistory.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 25),
+        child: Text(
+          'No recent searches.',
+          style: TextStyle(
+            color: Colors.white,
+            fontFamily: 'Georgia',
+            fontSize: 12,
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 52,
+      ),
+      child: Column(
+        children: [
+          ...searchHistory.map(
+            (item) {
+              return Padding(
+                padding:
+                    const EdgeInsets.symmetric(
+                  vertical: 5,
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.history,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+
+                    const SizedBox(width: 7),
+
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          searchController.text =
+                              item;
+
+                          performSearch(item);
+                        },
+                        child: Text(
+                          item,
+                          maxLines: 1,
+                          overflow:
+                              TextOverflow.ellipsis,
+                          style:
+                              const TextStyle(
+                            color: Colors.white,
+                            fontFamily: 'Georgia',
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    GestureDetector(
+                      onTap: () {
+                        removeHistoryItem(item);
+                      },
+                      child: const Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+
+          const SizedBox(height: 15),
+
+          GestureDetector(
+            onTap: clearHistory,
+            child: const Text(
+              'Clear All',
+              style: TextStyle(
+                color: Colors.white,
+                fontFamily: 'Georgia',
+                fontSize: 10,
+                decoration:
+                    TextDecoration.underline,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // SEARCH RESULTS
+  // ============================================================
+
+  Widget _buildSearchResults() {
+    if (searchResults.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 30),
+        child: Text(
+          'No results found.',
+          style: TextStyle(
+            color: Colors.white,
+            fontFamily: 'Georgia',
+            fontSize: 12,
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 32,
+      ),
+      child: Column(
+        children: searchResults
+            .map(
+              (book) => _bookCard(book),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  // ============================================================
+  // BOOK CARD
+  // ============================================================
+
+  Widget _bookCard(
+    Map<String, dynamic> book,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(
+        bottom: 12,
+      ),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: cream,
+        borderRadius:
+            BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 70,
+            decoration: BoxDecoration(
+              borderRadius:
+                  BorderRadius.circular(2),
+            ),
+            child: Image.asset(
+              book['image'],
+              fit: BoxFit.cover,
+              errorBuilder:
+                  (context, error, stackTrace) {
+                return const Icon(
+                  Icons.menu_book,
+                  color: maroon,
+                );
+              },
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  book['title'],
+                  style: const TextStyle(
+                    color: maroon,
+                    fontFamily: 'Georgia',
+                    fontSize: 13,
+                    fontWeight:
+                        FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 4),
+
+                Text(
+                  book['author'],
+                  style: const TextStyle(
+                    color: maroon,
+                    fontFamily: 'Georgia',
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // TOP NAVIGATION
+  // ============================================================
+
+  Widget _buildTopNavigation(
+    BuildContext context,
+  ) {
     return Container(
       height: 64,
       color: cream,
@@ -279,18 +483,27 @@ class _SearchScreenState extends State<SearchScreen> {
         children: [
           SizedBox(
             width: 48,
-            child: IconButton(
-              icon: const Icon(
-                Icons.menu,
-                color: maroon,
-              ),
-              onPressed: () {},
+            child: Builder(
+              builder: (drawerContext) {
+                return IconButton(
+                  icon: const Icon(
+                    Icons.menu,
+                    color: maroon,
+                  ),
+                  onPressed: () {
+                    Scaffold.of(
+                      drawerContext,
+                    ).openDrawer();
+                  },
+                );
+              },
             ),
           ),
 
           Expanded(
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
               children: [
                 _navText(
                   'Top 10',
@@ -344,7 +557,8 @@ class _SearchScreenState extends State<SearchScreen> {
           SizedBox(
             width: 114,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisAlignment:
+                  MainAxisAlignment.end,
               children: [
                 SizedBox(
                   width: 38,
@@ -400,6 +614,10 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
+  // ============================================================
+  // NAVIGATION TEXT
+  // ============================================================
+
   Widget _navText(
     String text,
     bool isActive,
@@ -408,7 +626,8 @@ class _SearchScreenState extends State<SearchScreen> {
     return TextButton(
       onPressed: onPressed,
       style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(
+        padding:
+            const EdgeInsets.symmetric(
           horizontal: 4,
         ),
         minimumSize: Size.zero,
@@ -428,201 +647,5 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
       ),
     );
-  }
-
-  Widget _buildSearchHistory() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 16,
-      ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment:
-                MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Search History',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontFamily: 'Georgia',
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              TextButton(
-                onPressed: clearHistory,
-                child: const Text(
-                  'Clear All',
-                  style: TextStyle(
-                    color: cream,
-                    fontFamily: 'Georgia',
-                    fontSize: 11,
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 8),
-
-          ...searchHistory.map(
-            (item) => ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(
-                Icons.history,
-                color: cream,
-                size: 20,
-              ),
-              title: Text(
-                item,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontFamily: 'Georgia',
-                  fontSize: 12,
-                ),
-              ),
-              trailing: IconButton(
-                icon: const Icon(
-                  Icons.close,
-                  color: cream,
-                  size: 18,
-                ),
-                onPressed: () {
-                  removeHistoryItem(item);
-                },
-              ),
-              onTap: () {
-                searchController.text = item;
-                performSearch(item);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _bookCard(
-    Map<String, dynamic> book,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 8,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 75,
-            height: 110,
-            decoration: BoxDecoration(
-              color: cream,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: book['image'] != null
-                ? ClipRRect(
-                    borderRadius:
-                        BorderRadius.circular(4),
-                    child: Image.asset(
-                      book['image'],
-                      fit: BoxFit.cover,
-                    ),
-                  )
-                : const Icon(
-                    Icons.menu_book,
-                    color: maroon,
-                    size: 32,
-                  ),
-          ),
-
-          const SizedBox(width: 16),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Text(
-                  book['title'],
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontFamily: 'Georgia',
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 4),
-
-                Text(
-                  book['author'],
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontFamily: 'Georgia',
-                    fontSize: 12,
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-
-                Row(
-                  children: [
-                    ..._ratingStars(book['rating']),
-                    const SizedBox(width: 6),
-                    Text(
-                      '${book['rating']}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontFamily: 'Georgia',
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  List<Widget> _ratingStars(double rating) {
-    List<Widget> stars = [];
-
-    for (int i = 1; i <= 5; i++) {
-      if (rating >= i) {
-        stars.add(
-          const Icon(
-            Icons.star,
-            color: cream,
-            size: 16,
-          ),
-        );
-      } else if (rating >= i - 0.5) {
-        stars.add(
-          const Icon(
-            Icons.star_half,
-            color: cream,
-            size: 16,
-          ),
-        );
-      } else {
-        stars.add(
-          const Icon(
-            Icons.star_border,
-            color: cream,
-            size: 16,
-          ),
-        );
-      }
-    }
-
-    return stars;
   }
 }
