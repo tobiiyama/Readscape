@@ -2,10 +2,18 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'topbooks_screen.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Supabase.initialize(
+    url: 'https://smjufnqohqivtcylujnn.supabase.co',
+    publishableKey: 'sb_publishable_cmB37INDg84_kcRLLWF28w__JPKZoXG',
+  );
+
   runApp(const ReadscapeApp());
 }
 
@@ -259,7 +267,7 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _login() {
+  Future<void> _login() async {
     final email = emailController.text.trim();
     final password = passwordController.text.trim();
 
@@ -286,12 +294,37 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const TopBooksScreen(),
-      ),
-    );
+    try {
+      await Supabase.instance.client.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+
+      if (!mounted) return;
+    
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const TopBooksScreen(),
+        ),
+      );
+  } on AuthException catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Something went wrong: $error'),
+        ),
+      );
+    }
   }
 
   @override
@@ -534,7 +567,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
-  void _createAccount() {
+  Future<void> _createAccount() async {
     final email = emailController.text.trim();
     final password = passwordController.text.trim();
 
@@ -561,16 +594,54 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return;
     }
 
-    // Account creation is successful for now.
-    // The real database will be connected later.
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
+    try {
+      final supabase = Supabase.instance.client;
+
+      final response = await Supabase.instance.client.auth.signUp(
+        email: email,
+        password: password,
+      );
+
+      if (response.user == null) {
+        throw Exception('Account could not be created.');
+      }
+
+      if (response.session == null) {
+        await supabase.auth.signInWithPassword(
+          email: email,
+          password: password,
+        );
+      }
+
+      if (!mounted) return;
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
             const ProfileSetupScreen(),
       ),
     );
+  } on AuthException catch (error) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error.message),
+      ),
+    );
+  } catch (error) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+          content: Text('Something went wrong: $error'),
+        ),
+      );
+    }
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -925,9 +996,8 @@ class _ProfileSetupScreenState
     });
   }
 
-  void _continue() {
-    final username =
-        usernameController.text.trim();
+  Future<void> _continue() async {
+    final username = usernameController.text.trim();
 
     setState(() {
       usernameError = username.isEmpty;
@@ -938,12 +1008,54 @@ class _ProfileSetupScreenState
       return;
     }
 
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+
+      if (user == null) {
+        throw Exception('User not logged in.');
+      }
+
+      print('SIGNED IN USER: ${user.id}');
+
+      final filePath =
+          '${user.id}/profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      await supabase.storage.from('avatars').uploadBinary(
+        filePath,
+        profileImage!,
+        fileOptions: const FileOptions(
+          contentType: 'image/jpeg',
+          upsert: true,
+        ),
+      );
+
+      final avatarUrl = 
+          supabase.storage.from('avatars').getPublicUrl(filePath);
+
+      await supabase.from('profiles').upsert({
+        'id': user.id,
+        'username': username,
+        'avatar_url': avatarUrl,
+      });
+
+      if (!mounted) return;
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (context) => const TopBooksScreen(),
       ),
     );
+  } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not save your profile: $error'),
+        ),
+      );
+    }
   }
 
   @override
