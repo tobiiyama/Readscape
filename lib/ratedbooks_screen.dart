@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'topbooks_screen.dart';
 import 'history_screen.dart';
@@ -6,22 +7,6 @@ import 'favorites_screen.dart';
 import 'notifications_screen.dart';
 import 'search_screen.dart';
 import 'sidemenu_screen.dart';
-
-// ============================================================
-// SHARED USER RATINGS
-// ============================================================
-//
-// These ratings are shared outside the screen so they don't
-// reset whenever RatedBooksScreen is opened again.
-//
-// Later, this can be replaced with your actual database.
-//
-
-final Map<String, double> userRatings = {
-  'A Court of Mist and Fury': 4.5,
-  'Pride and Prejudice': 4.5,
-  'A Court of Thorns and Roses': 5.0,
-};
 
 // ============================================================
 // RATED BOOKS SCREEN
@@ -44,12 +29,8 @@ class _RatedBooksScreenState
       Color(0xFF7A1F2B);
 
   // ============================================================
-  // TEMPORARY BOOK DATA
+  // BOOKS
   // ============================================================
-  //
-  // The books themselves are temporary for now.
-  // Later, these will come from your database.
-  //
 
   final List<Map<String, dynamic>> ratedBooks = [
     {
@@ -66,7 +47,178 @@ class _RatedBooksScreenState
     },
   ];
 
-  String activeNav = '';
+  // ============================================================
+  // USER RATINGS FROM SUPABASE
+  // ============================================================
+
+  final Map<String, double> userRatings = {};
+
+  bool isLoadingRatings = true;
+
+  // ============================================================
+  // INIT
+  // ============================================================
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRatings();
+  }
+
+  // ============================================================
+  // LOAD RATINGS
+  // ============================================================
+
+  Future<void> _loadRatings() async {
+    try {
+      final supabase =
+          Supabase.instance.client;
+
+      final user =
+          supabase.auth.currentUser;
+
+      if (user == null) {
+        if (!mounted) return;
+
+        setState(() {
+          isLoadingRatings = false;
+        });
+
+        return;
+      }
+
+      final data = await supabase
+          .from('user_books')
+          .select(
+            'book_title, rating',
+          )
+          .eq('user_id', user.id)
+          .not('rating', 'is', null);
+
+      if (!mounted) return;
+
+      setState(() {
+        userRatings.clear();
+
+        for (final row in data) {
+          final title =
+              row['book_title'] as String?;
+
+          final rating =
+              row['rating'];
+
+          if (title != null &&
+              rating != null) {
+            userRatings[title] =
+                (rating as num).toDouble();
+          }
+        }
+
+        isLoadingRatings = false;
+      });
+    } catch (error) {
+      debugPrint(
+        'Could not load ratings: $error',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        isLoadingRatings = false;
+      });
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not load your ratings.',
+          ),
+        ),
+      );
+    }
+  }
+
+  // ============================================================
+  // SAVE RATING
+  // ============================================================
+
+  Future<void> _saveRating({
+    required String title,
+    required String author,
+    required double rating,
+  }) async {
+    try {
+      final supabase =
+          Supabase.instance.client;
+
+      final user =
+          supabase.auth.currentUser;
+
+      if (user == null) {
+        throw Exception(
+          'User not logged in.',
+        );
+      }
+
+      final existing = await supabase
+          .from('user_books')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('book_title', title)
+          .maybeSingle();
+
+      if (existing != null) {
+        await supabase
+            .from('user_books')
+            .update({
+          'rating': rating,
+          'book_author': author,
+        }).eq(
+          'id',
+          existing['id'],
+        );
+      } else {
+        await supabase
+            .from('user_books')
+            .insert({
+          'user_id': user.id,
+          'book_title': title,
+          'book_author': author,
+          'rating': rating,
+        });
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        userRatings[title] = rating;
+      });
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Rating saved!',
+          ),
+        ),
+      );
+    } catch (error) {
+      debugPrint(
+        'Could not save rating: $error',
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not save your rating: $error',
+          ),
+        ),
+      );
+    }
+  }
 
   // ============================================================
   // BUILD
@@ -76,10 +228,7 @@ class _RatedBooksScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: maroon,
-
-      // SIDE MENU
       drawer: const SideMenu(),
-
       body: SafeArea(
         child: Column(
           children: [
@@ -91,10 +240,10 @@ class _RatedBooksScreenState
                   children: [
                     const SizedBox(height: 40),
 
-                    // TITLE
                     const Text(
                       'Rated Books',
-                      textAlign: TextAlign.center,
+                      textAlign:
+                          TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
                         fontFamily: 'Georgia',
@@ -106,7 +255,6 @@ class _RatedBooksScreenState
 
                     const SizedBox(height: 10),
 
-                    // SUBTITLE
                     const Padding(
                       padding:
                           EdgeInsets.symmetric(
@@ -128,7 +276,19 @@ class _RatedBooksScreenState
 
                     const SizedBox(height: 25),
 
-                    // BOOKS
+                    if (isLoadingRatings)
+                      const Padding(
+                        padding:
+                            EdgeInsets.only(
+                          top: 20,
+                          bottom: 20,
+                        ),
+                        child:
+                            CircularProgressIndicator(
+                          color: cream,
+                        ),
+                      ),
+
                     ...ratedBooks.map(
                       (book) =>
                           _ratedBookCard(book),
@@ -157,7 +317,6 @@ class _RatedBooksScreenState
       color: cream,
       child: Row(
         children: [
-          // HAMBURGER
           SizedBox(
             width: 48,
             child: Builder(
@@ -177,14 +336,13 @@ class _RatedBooksScreenState
             ),
           ),
 
-          // MAIN NAVIGATION
           Expanded(
             child: Row(
               mainAxisAlignment:
                   MainAxisAlignment.center,
               children: [
                 _navText(
-                  'Top',
+                  'Top 10',
                   false,
                   () {
                     Navigator.pushReplacement(
@@ -232,14 +390,12 @@ class _RatedBooksScreenState
             ),
           ),
 
-          // RIGHT-SIDE ICONS
           SizedBox(
             width: 114,
             child: Row(
               mainAxisAlignment:
                   MainAxisAlignment.end,
               children: [
-                // NOTIFICATIONS
                 SizedBox(
                   width: 38,
                   child: IconButton(
@@ -261,7 +417,6 @@ class _RatedBooksScreenState
                   ),
                 ),
 
-                // SHARE
                 SizedBox(
                   width: 38,
                   child: IconButton(
@@ -275,7 +430,6 @@ class _RatedBooksScreenState
                   ),
                 ),
 
-                // SEARCH
                 SizedBox(
                   width: 38,
                   child: IconButton(
@@ -305,7 +459,7 @@ class _RatedBooksScreenState
   }
 
   // ============================================================
-  // NAVIGATION TEXT
+  // NAV TEXT
   // ============================================================
 
   Widget _navText(
@@ -330,10 +484,9 @@ class _RatedBooksScreenState
           color: maroon,
           fontFamily: 'Georgia',
           fontSize: 14,
-          fontWeight:
-              isActive
-                  ? FontWeight.bold
-                  : FontWeight.normal,
+          fontWeight: isActive
+              ? FontWeight.bold
+              : FontWeight.normal,
         ),
       ),
     );
@@ -352,7 +505,6 @@ class _RatedBooksScreenState
     final String author =
         book['author'] as String;
 
-    // Get the CURRENT rating from the shared map.
     final double rating =
         userRatings[title] ?? 0.0;
 
@@ -366,14 +518,6 @@ class _RatedBooksScreenState
         crossAxisAlignment:
             CrossAxisAlignment.center,
         children: [
-          // ====================================================
-          // TEMPORARY BOOK ICON
-          // ====================================================
-          //
-          // Later this will be replaced by the book cover
-          // supplied by your database.
-          //
-
           Container(
             width: 83,
             height: 126,
@@ -391,19 +535,15 @@ class _RatedBooksScreenState
 
           const SizedBox(width: 14),
 
-          // ====================================================
-          // BOOK INFORMATION
-          // ====================================================
-
           Expanded(
             child: Column(
               crossAxisAlignment:
                   CrossAxisAlignment.center,
               children: [
-                // BOOK TITLE
                 Text(
                   title,
-                  textAlign: TextAlign.center,
+                  textAlign:
+                      TextAlign.center,
                   style: const TextStyle(
                     color: Colors.white,
                     fontFamily: 'Georgia',
@@ -415,10 +555,10 @@ class _RatedBooksScreenState
 
                 const SizedBox(height: 4),
 
-                // AUTHOR
                 Text(
                   'by $author',
-                  textAlign: TextAlign.center,
+                  textAlign:
+                      TextAlign.center,
                   style: const TextStyle(
                     color: Colors.white,
                     fontFamily: 'Georgia',
@@ -428,7 +568,6 @@ class _RatedBooksScreenState
 
                 const SizedBox(height: 6),
 
-                // CURRENT RATING
                 Row(
                   mainAxisAlignment:
                       MainAxisAlignment.center,
@@ -438,7 +577,6 @@ class _RatedBooksScreenState
 
                 const SizedBox(height: 8),
 
-                // CHANGE RATING BUTTON
                 SizedBox(
                   height: 27,
                   child: ElevatedButton(
@@ -451,8 +589,7 @@ class _RatedBooksScreenState
                       foregroundColor: maroon,
                       elevation: 0,
                       padding:
-                          const EdgeInsets
-                              .symmetric(
+                          const EdgeInsets.symmetric(
                         horizontal: 20,
                       ),
                       shape:
@@ -492,6 +629,9 @@ class _RatedBooksScreenState
     final String title =
         book['title'] as String;
 
+    final String author =
+        book['author'] as String;
+
     double selectedRating =
         userRatings[title] ?? 0.0;
 
@@ -500,35 +640,24 @@ class _RatedBooksScreenState
       builder: (dialogContext) {
         return StatefulBuilder(
           builder:
-              (
-                dialogContext,
-                setDialogState,
-              ) {
+              (context, setDialogState) {
             return AlertDialog(
               backgroundColor: cream,
-              shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(12),
-              ),
-
-              // DIALOG TITLE
               title: const Text(
                 'Change Your Rating',
-                textAlign: TextAlign.center,
+                textAlign:
+                    TextAlign.center,
                 style: TextStyle(
                   color: maroon,
                   fontFamily: 'Georgia',
-                  fontSize: 18,
                   fontWeight:
                       FontWeight.bold,
                 ),
               ),
-
               content: Column(
                 mainAxisSize:
                     MainAxisSize.min,
                 children: [
-                  // BOOK TITLE
                   Text(
                     title,
                     textAlign:
@@ -536,41 +665,33 @@ class _RatedBooksScreenState
                     style: const TextStyle(
                       color: maroon,
                       fontFamily: 'Georgia',
-                      fontSize: 13,
+                      fontSize: 14,
                     ),
                   ),
 
                   const SizedBox(height: 20),
 
-                  // RATING STARS
                   Row(
                     mainAxisAlignment:
                         MainAxisAlignment.center,
-                    children: List.generate(
+                    children:
+                        List.generate(
                       5,
                       (index) {
-                        final int
-                            starNumber =
-                            index + 1;
+                        final double
+                            starValue =
+                            index + 1.0;
 
                         return IconButton(
-                          padding:
-                              EdgeInsets.zero,
-                          constraints:
-                              const BoxConstraints(
-                            minWidth: 38,
-                            minHeight: 38,
-                          ),
                           onPressed: () {
                             setDialogState(() {
                               selectedRating =
-                                  starNumber
-                                      .toDouble();
+                                  starValue;
                             });
                           },
                           icon: Icon(
                             selectedRating >=
-                                    starNumber
+                                    starValue
                                 ? Icons.star
                                 : Icons.star_border,
                             color: maroon,
@@ -580,26 +701,9 @@ class _RatedBooksScreenState
                       },
                     ),
                   ),
-
-                  const SizedBox(height: 8),
-
-                  // RATING NUMBER
-                  Text(
-                    '${selectedRating.toStringAsFixed(1)} / 5.0',
-                    style: const TextStyle(
-                      color: maroon,
-                      fontFamily: 'Georgia',
-                      fontSize: 13,
-                    ),
-                  ),
                 ],
               ),
-
-              actionsAlignment:
-                  MainAxisAlignment.center,
-
               actions: [
-                // CANCEL
                 TextButton(
                   onPressed: () {
                     Navigator.pop(
@@ -615,34 +719,34 @@ class _RatedBooksScreenState
                   ),
                 ),
 
-                // SAVE
                 ElevatedButton(
-                  onPressed: () {
-                    // ==================================================
-                    // THIS IS THE IMPORTANT PART.
-                    //
-                    // Save the new rating to the shared map.
-                    // ==================================================
+                  onPressed:
+                      selectedRating == 0
+                          ? null
+                          : () async {
+                              await _saveRating(
+                                title: title,
+                                author: author,
+                                rating:
+                                    selectedRating,
+                              );
 
-                    userRatings[title] =
-                        selectedRating;
+                              if (!context.mounted) {
+                                return;
+                              }
 
-                    // Rebuild Rated Books screen
-                    // so the new stars appear.
-                    setState(() {});
-
-                    // Close dialog.
-                    Navigator.pop(
-                      dialogContext,
-                    );
-                  },
+                              Navigator.pop(
+                                dialogContext,
+                              );
+                            },
                   style:
                       ElevatedButton.styleFrom(
                     backgroundColor: maroon,
-                    foregroundColor: cream,
+                    foregroundColor:
+                        Colors.white,
                   ),
                   child: const Text(
-                    'Save Rating',
+                    'Save',
                     style: TextStyle(
                       fontFamily: 'Georgia',
                     ),
@@ -671,7 +775,7 @@ class _RatedBooksScreenState
           const Icon(
             Icons.star,
             color: cream,
-            size: 19,
+            size: 18,
           ),
         );
       } else if (rating >= i - 0.5) {
@@ -679,7 +783,7 @@ class _RatedBooksScreenState
           const Icon(
             Icons.star_half,
             color: cream,
-            size: 19,
+            size: 18,
           ),
         );
       } else {
@@ -687,7 +791,7 @@ class _RatedBooksScreenState
           const Icon(
             Icons.star_border,
             color: cream,
-            size: 19,
+            size: 18,
           ),
         );
       }

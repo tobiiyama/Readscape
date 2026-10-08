@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'topbooks_screen.dart';
 import 'history_screen.dart';
@@ -6,56 +7,6 @@ import 'favorites_screen.dart';
 import 'notifications_screen.dart';
 import 'search_screen.dart';
 import 'sidemenu_screen.dart';
-
-// ============================================================
-// COLLECTION DATA
-// ============================================================
-
-final List<Map<String, String>> wantToReadBooks = [
-  {
-    'title': 'Heated Rivalry',
-    'image': 'assets/images/heated_rivalry.jpg',
-  },
-  {
-    'title': 'Little Women',
-    'image': 'assets/images/little_women.jpg',
-  },
-  {
-    'title': 'Credence',
-    'image': 'assets/images/credence.jpg',
-  },
-  {
-    'title': 'Pride and Prejudice',
-    'image': 'assets/images/pride_and_prejudice.jpg',
-  },
-];
-
-final List<Map<String, String>> readingBooks = [
-  {
-    'title': 'Bridgerton',
-    'image': 'assets/images/bridgerton.jpg',
-  },
-  {
-    'title': 'One Day',
-    'image': 'assets/images/one_day.jpg',
-  },
-];
-
-final List<Map<String, String>> alreadyReadBooks = [
-  {
-    'title': 'Pride and Prejudice',
-    'image': 'assets/images/pride_and_prejudice.jpg',
-  },
-  {
-    'title': 'Mockingjay',
-    'image': 'assets/images/mockingjay.jpg',
-  },
-  {
-    'title': 'Harry Potter and the Chamber of Secrets',
-    'image':
-        'assets/images/harry_potter_chamber_of_secrets.jpg',
-  },
-];
 
 // ============================================================
 // COLLECTION SCREEN
@@ -77,13 +28,243 @@ class _CollectionScreenState
   static const Color maroon =
       Color(0xFF7A1F2B);
 
+  // ============================================================
+  // COLLECTION DATA
+  // ============================================================
+
+  final List<Map<String, String>> wantToReadBooks = [];
+  final List<Map<String, String>> readingBooks = [];
+  final List<Map<String, String>> alreadyReadBooks = [];
+
+  bool isLoadingCollection = true;
+
+  // ============================================================
+  // BOOK IMAGE LOOKUP
+  // ============================================================
+  //
+  // These are only used to find the local cover image.
+  // The actual collection belongs to the logged-in user
+  // and comes from Supabase.
+  //
+
+  final Map<String, String> bookImages = {
+    'Heated Rivalry':
+        'assets/images/heated_rivalry.jpg',
+
+    'Little Women':
+        'assets/images/little_women.jpg',
+
+    'Credence':
+        'assets/images/credence.jpg',
+
+    'Pride and Prejudice':
+        'assets/images/pride_and_prejudice.jpg',
+
+    'Bridgerton':
+        'assets/images/bridgerton.jpg',
+
+    'One Day':
+        'assets/images/one_day.jpg',
+
+    'Mockingjay':
+        'assets/images/mockingjay.jpg',
+
+    'Harry Potter and the Chamber of Secrets':
+        'assets/images/harry_potter_chamber_of_secrets.jpg',
+  };
+
+  // ============================================================
+  // INIT
+  // ============================================================
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCollection();
+  }
+
+  // ============================================================
+  // LOAD COLLECTION FROM SUPABASE
+  // ============================================================
+
+  Future<void> _loadCollection() async {
+    try {
+      final supabase =
+          Supabase.instance.client;
+
+      final user =
+          supabase.auth.currentUser;
+
+      if (user == null) {
+        if (!mounted) return;
+
+        setState(() {
+          isLoadingCollection = false;
+        });
+
+        return;
+      }
+
+      final data = await supabase
+          .from('user_books')
+          .select(
+            'book_title, book_author, book_image, collection_status',
+          )
+          .eq('user_id', user.id)
+          .not(
+            'collection_status',
+            'is',
+            null,
+          );
+
+      if (!mounted) return;
+
+      wantToReadBooks.clear();
+      readingBooks.clear();
+      alreadyReadBooks.clear();
+
+      for (final row in data) {
+        final title =
+            row['book_title'] as String?;
+
+        if (title == null ||
+            title.isEmpty) {
+          continue;
+        }
+
+        final author =
+            row['book_author'] as String? ?? '';
+
+        final databaseImage =
+            row['book_image'] as String? ?? '';
+
+        final localImage =
+            bookImages[title] ?? '';
+
+        final image =
+            databaseImage.isNotEmpty
+                ? databaseImage
+                : localImage;
+
+        final book = {
+          'title': title,
+          'author': author,
+          'image': image,
+        };
+
+        final status =
+            row['collection_status']
+                as String?;
+
+        if (status == 'want_to_read') {
+          wantToReadBooks.add(book);
+        } else if (status == 'reading') {
+          readingBooks.add(book);
+        } else if (status == 'already_read') {
+          alreadyReadBooks.add(book);
+        }
+      }
+
+      setState(() {
+        isLoadingCollection = false;
+      });
+    } catch (error) {
+      debugPrint(
+        'Could not load collection: $error',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        isLoadingCollection = false;
+      });
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not load your collection.',
+          ),
+        ),
+      );
+    }
+  }
+
+  // ============================================================
+  // REMOVE BOOK FROM COLLECTION
+  // ============================================================
+
+  Future<void> _removeFromCollection(
+    String title,
+  ) async {
+    try {
+      final supabase =
+          Supabase.instance.client;
+
+      final user =
+          supabase.auth.currentUser;
+
+      if (user == null) {
+        throw Exception(
+          'User not logged in.',
+        );
+      }
+
+      await supabase
+          .from('user_books')
+          .update({
+        'collection_status': null,
+      })
+          .eq(
+            'user_id',
+            user.id,
+          )
+          .eq(
+            'book_title',
+            title,
+          );
+
+      if (!mounted) return;
+
+      await _loadCollection();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Removed from collection.',
+          ),
+        ),
+      );
+    } catch (error) {
+      debugPrint(
+        'Could not remove book: $error',
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not remove the book: $error',
+          ),
+        ),
+      );
+    }
+  }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: maroon,
-
       drawer: const SideMenu(),
-
       body: SafeArea(
         child: Column(
           children: [
@@ -101,14 +282,11 @@ class _CollectionScreenState
                   children: [
                     const SizedBox(height: 34),
 
-                    // ==================================================
-                    // TITLE
-                    // ==================================================
-
                     const Center(
                       child: Text(
                         'Collection',
-                        textAlign: TextAlign.center,
+                        textAlign:
+                            TextAlign.center,
                         style: TextStyle(
                           color: Colors.white,
                           fontFamily: 'Georgia',
@@ -121,22 +299,14 @@ class _CollectionScreenState
 
                     const SizedBox(height: 10),
 
-                    // ==================================================
-                    // DESCRIPTION
-                    // ==================================================
-                    //
-                    // The SizedBox gives the text a centered area
-                    // across the page, while textAlign centers both
-                    // lines inside that area.
-                    //
-
                     Center(
                       child: SizedBox(
                         width: 340,
                         child: const Text(
                           'Manage your reading lists and easily track books\n'
                           'you want to read, are reading, and have finished.',
-                          textAlign: TextAlign.center,
+                          textAlign:
+                              TextAlign.center,
                           style: TextStyle(
                             color: Colors.white,
                             fontFamily: 'Georgia',
@@ -151,36 +321,43 @@ class _CollectionScreenState
 
                     const SizedBox(height: 34),
 
-                    // ==================================================
-                    // I WANT TO READ
-                    // ==================================================
+                    if (isLoadingCollection)
+                      const Center(
+                        child: Padding(
+                          padding:
+                              EdgeInsets.only(
+                            top: 20,
+                            bottom: 20,
+                          ),
+                          child:
+                              CircularProgressIndicator(
+                            color: cream,
+                          ),
+                        ),
+                      )
+                    else ...[
+                      _buildSection(
+                        title: 'I want to read',
+                        books:
+                            wantToReadBooks,
+                      ),
 
-                    _buildSection(
-                      title: 'I want to read',
-                      books: wantToReadBooks,
-                    ),
+                      const SizedBox(height: 18),
 
-                    const SizedBox(height: 18),
+                      _buildSection(
+                        title: "I'm reading",
+                        books:
+                            readingBooks,
+                      ),
 
-                    // ==================================================
-                    // I'M READING
-                    // ==================================================
+                      const SizedBox(height: 18),
 
-                    _buildSection(
-                      title: "I'm reading",
-                      books: readingBooks,
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    // ==================================================
-                    // I ALREADY READ
-                    // ==================================================
-
-                    _buildSection(
-                      title: 'I already read',
-                      books: alreadyReadBooks,
-                    ),
+                      _buildSection(
+                        title: 'I already read',
+                        books:
+                            alreadyReadBooks,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -203,7 +380,6 @@ class _CollectionScreenState
       color: cream,
       child: Row(
         children: [
-          // HAMBURGER
           SizedBox(
             width: 48,
             child: Builder(
@@ -223,14 +399,14 @@ class _CollectionScreenState
             ),
           ),
 
-          // TOP / HISTORY / FAVORITES
           Expanded(
             child: Row(
               mainAxisAlignment:
                   MainAxisAlignment.center,
               children: [
                 _navText(
-                  'Top',
+                  'Top 10',
+                  false,
                   () {
                     Navigator.pushReplacement(
                       context,
@@ -246,6 +422,7 @@ class _CollectionScreenState
 
                 _navText(
                   'History',
+                  false,
                   () {
                     Navigator.pushReplacement(
                       context,
@@ -261,6 +438,7 @@ class _CollectionScreenState
 
                 _navText(
                   'Favorites',
+                  false,
                   () {
                     Navigator.pushReplacement(
                       context,
@@ -275,14 +453,12 @@ class _CollectionScreenState
             ),
           ),
 
-          // RIGHT SIDE ICONS
           SizedBox(
             width: 114,
             child: Row(
               mainAxisAlignment:
                   MainAxisAlignment.end,
               children: [
-                // NOTIFICATIONS
                 SizedBox(
                   width: 38,
                   child: IconButton(
@@ -304,7 +480,6 @@ class _CollectionScreenState
                   ),
                 ),
 
-                // SHARE
                 SizedBox(
                   width: 38,
                   child: IconButton(
@@ -318,7 +493,6 @@ class _CollectionScreenState
                   ),
                 ),
 
-                // SEARCH
                 SizedBox(
                   width: 38,
                   child: IconButton(
@@ -348,11 +522,12 @@ class _CollectionScreenState
   }
 
   // ============================================================
-  // NAVIGATION TEXT
+  // NAV TEXT
   // ============================================================
 
   Widget _navText(
     String text,
+    bool isActive,
     VoidCallback onPressed,
   ) {
     return TextButton(
@@ -368,10 +543,13 @@ class _CollectionScreenState
       ),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           color: maroon,
           fontFamily: 'Georgia',
           fontSize: 14,
+          fontWeight: isActive
+              ? FontWeight.bold
+              : FontWeight.normal,
         ),
       ),
     );
@@ -389,7 +567,6 @@ class _CollectionScreenState
       crossAxisAlignment:
           CrossAxisAlignment.start,
       children: [
-        // SECTION TITLE
         Padding(
           padding:
               const EdgeInsets.only(
@@ -410,35 +587,50 @@ class _CollectionScreenState
           ),
         ),
 
-        // ==================================================
-        // HORIZONTAL BOOK LIST
-        // ==================================================
-
-        SizedBox(
-          height: 118,
-          child: ListView.separated(
-            scrollDirection:
-                Axis.horizontal,
+        if (books.isEmpty)
+          const Padding(
             padding:
-                const EdgeInsets.only(
-              left: 28,
-              right: 28,
+                EdgeInsets.only(
+              left: 48,
+              right: 48,
             ),
-            itemCount: books.length,
-            separatorBuilder:
-                (context, index) {
-              return const SizedBox(
-                width: 15,
-              );
-            },
-            itemBuilder:
-                (context, index) {
-              return _buildBookCover(
-                books[index],
-              );
-            },
+            child: Text(
+              'No books yet.',
+              style: TextStyle(
+                color: Colors.white70,
+                fontFamily: 'Georgia',
+                fontSize: 11,
+                fontStyle:
+                    FontStyle.italic,
+              ),
+            ),
+          )
+        else
+          SizedBox(
+            height: 118,
+            child: ListView.separated(
+              scrollDirection:
+                  Axis.horizontal,
+              padding:
+                  const EdgeInsets.only(
+                left: 28,
+                right: 28,
+              ),
+              itemCount: books.length,
+              separatorBuilder:
+                  (context, index) {
+                return const SizedBox(
+                  width: 15,
+                );
+              },
+              itemBuilder:
+                  (context, index) {
+                return _buildBookCover(
+                  books[index],
+                );
+              },
+            ),
           ),
-        ),
       ],
     );
   }
@@ -470,24 +662,51 @@ class _CollectionScreenState
         ),
         clipBehavior:
             Clip.antiAlias,
-        child: Image.asset(
-          image,
-          fit: BoxFit.cover,
-          errorBuilder:
-              (
-                context,
-                error,
-                stackTrace,
-              ) {
-            return const Center(
-              child: Icon(
-                Icons.menu_book,
-                color: maroon,
-                size: 42,
-              ),
-            );
-          },
-        ),
+        child: image.isEmpty
+            ? const Center(
+                child: Icon(
+                  Icons.menu_book,
+                  color: maroon,
+                  size: 42,
+                ),
+              )
+            : image.startsWith('http')
+                ? Image.network(
+                    image,
+                    fit: BoxFit.cover,
+                    errorBuilder:
+                        (
+                      context,
+                      error,
+                      stackTrace,
+                    ) {
+                      return const Center(
+                        child: Icon(
+                          Icons.menu_book,
+                          color: maroon,
+                          size: 42,
+                        ),
+                      );
+                    },
+                  )
+                : Image.asset(
+                    image,
+                    fit: BoxFit.cover,
+                    errorBuilder:
+                        (
+                      context,
+                      error,
+                      stackTrace,
+                    ) {
+                      return const Center(
+                        child: Icon(
+                          Icons.menu_book,
+                          color: maroon,
+                          size: 42,
+                        ),
+                      );
+                    },
+                  ),
       ),
     );
   }
@@ -502,21 +721,11 @@ class _CollectionScreenState
     showModalBottomSheet(
       context: context,
       backgroundColor: cream,
-      shape:
-          const RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.vertical(
-          top: Radius.circular(18),
-        ),
-      ),
-      builder: (context) {
+      builder: (sheetContext) {
         return SafeArea(
           child: Padding(
             padding:
-                const EdgeInsets.symmetric(
-              horizontal: 25,
-              vertical: 20,
-            ),
+                const EdgeInsets.all(20),
             child: Column(
               mainAxisSize:
                   MainAxisSize.min,
@@ -528,36 +737,54 @@ class _CollectionScreenState
                   style: const TextStyle(
                     color: maroon,
                     fontFamily: 'Georgia',
-                    fontSize: 16,
+                    fontSize: 18,
                     fontWeight:
                         FontWeight.bold,
                   ),
                 ),
 
-                const SizedBox(height: 15),
+                const SizedBox(height: 20),
 
-                const Text(
-                  'Book options',
-                  style: TextStyle(
+                ListTile(
+                  leading: const Icon(
+                    Icons.menu_book,
                     color: maroon,
-                    fontFamily: 'Georgia',
-                    fontSize: 13,
                   ),
-                ),
-
-                const SizedBox(height: 15),
-
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                  child: const Text(
-                    'Close',
+                  title: const Text(
+                    'View Book',
                     style: TextStyle(
                       color: maroon,
                       fontFamily: 'Georgia',
                     ),
                   ),
+                  onTap: () {
+                    Navigator.pop(
+                      sheetContext,
+                    );
+                  },
+                ),
+
+                ListTile(
+                  leading: const Icon(
+                    Icons.delete_outline,
+                    color: maroon,
+                  ),
+                  title: const Text(
+                    'Remove from Collection',
+                    style: TextStyle(
+                      color: maroon,
+                      fontFamily: 'Georgia',
+                    ),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(
+                      sheetContext,
+                    );
+
+                    await _removeFromCollection(
+                      title,
+                    );
+                  },
                 ),
               ],
             ),

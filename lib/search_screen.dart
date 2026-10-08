@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'topbooks_screen.dart';
 import 'history_screen.dart';
@@ -28,36 +32,7 @@ class _SearchScreenState extends State<SearchScreen> {
       TextEditingController();
 
   bool hasSearched = false;
-
-  // ============================================================
-  // BOOKS
-  // ============================================================
-
-  final List<Map<String, dynamic>> books = [
-    {
-      'title': 'Harry Potter and the Chamber of Secrets',
-      'author': 'J.K. Rowling',
-      'image':
-          'assets/images/harry_potter_chamber_of_secrets.jpg',
-    },
-    {
-      'title': 'Credence',
-      'author': 'Penelope Douglas',
-      'image': 'assets/images/credence.jpg',
-    },
-    {
-      'title': 'Song of Ice and Fire',
-      'author': 'George R.R. Martin',
-      'image':
-          'assets/images/song_of_ice_and_fire.jpg',
-    },
-    {
-      'title': 'Fire and Blood',
-      'author': 'George R.R. Martin',
-      'image':
-          'assets/images/fire_and_blood.jpg',
-    },
-  ];
+  bool isSearching = false;
 
   List<Map<String, dynamic>> searchResults = [];
 
@@ -71,7 +46,7 @@ class _SearchScreenState extends State<SearchScreen> {
   // SEARCH
   // ============================================================
 
-  void performSearch([String? value]) {
+  Future<void> performSearch([String? value]) async {
     final entered =
         (value ?? searchController.text).trim();
 
@@ -79,29 +54,134 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
 
-    final search = entered.toLowerCase();
-
     searchHistory.removeWhere(
-      (item) => item.toLowerCase() == search,
+      (item) =>
+          item.toLowerCase() ==
+          entered.toLowerCase(),
     );
 
     searchHistory.insert(0, entered);
 
-    final results = books.where((book) {
-      final title =
-          book['title'].toString().toLowerCase();
-
-      final author =
-          book['author'].toString().toLowerCase();
-
-      return title.contains(search) ||
-          author.contains(search);
-    }).toList();
-
     setState(() {
       hasSearched = true;
-      searchResults = results;
+      isSearching = true;
+      searchResults = [];
     });
+
+    try {
+      final url = Uri.https(
+        'openlibrary.org',
+        '/search.json',
+        {
+          'q': entered,
+          'limit': '20',
+          'fields':
+              'title,author_name,cover_i,'
+              'key,first_publish_year,'
+              'ratings_average',
+        },
+      );
+
+      final response = await http.get(
+        url,
+        headers: const {
+          'User-Agent': 'Readscape School Project',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          'Search request failed.',
+        );
+      }
+
+      final data =
+          jsonDecode(response.body)
+              as Map<String, dynamic>;
+
+      final docs =
+          data['docs'] as List<dynamic>? ?? [];
+
+      final List<Map<String, dynamic>>
+          loadedResults = [];
+
+      for (final item in docs) {
+        final book =
+            item as Map<String, dynamic>;
+
+        final title =
+            book['title']?.toString();
+
+        if (title == null ||
+            title.trim().isEmpty) {
+          continue;
+        }
+
+        String author = 'Unknown author';
+
+        final authors =
+            book['author_name'];
+
+        if (authors is List &&
+            authors.isNotEmpty) {
+          author = authors.first.toString();
+        }
+
+        String? image;
+
+        final coverId =
+            book['cover_i'];
+
+        if (coverId != null) {
+          image =
+              'https://covers.openlibrary.org/b/id/'
+              '$coverId-L.jpg';
+        }
+
+        double? rating;
+
+        final ratingsAverage =
+            book['ratings_average'];
+
+        if (ratingsAverage is num) {
+          rating =
+              ratingsAverage.toDouble();
+        }
+
+        loadedResults.add({
+          'title': title,
+          'author': author,
+          'image': image,
+          'rating': rating,
+        });
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        searchResults = loadedResults;
+        isSearching = false;
+      });
+    } catch (error) {
+      debugPrint(
+        'Could not search books: $error',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        searchResults = [];
+        isSearching = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not search books: $error',
+          ),
+        ),
+      );
+    }
   }
 
   // ============================================================
@@ -137,6 +217,452 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   // ============================================================
+  // SAVE BOOK TO READING HISTORY
+  // ============================================================
+
+  Future<void> _saveReadingHistory({
+    required String title,
+    required String author,
+    required String? image,
+  }) async {
+    try {
+      final supabase =
+          Supabase.instance.client;
+
+      final user =
+          supabase.auth.currentUser;
+
+      if (user == null) {
+        throw Exception(
+          'User not logged in.',
+        );
+      }
+
+      final existing = await supabase
+          .from('user_books')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('book_title', title)
+          .maybeSingle();
+
+      final bookData = {
+        'book_author': author,
+        'book_image': image,
+        'last_read_at':
+            DateTime.now()
+                .toUtc()
+                .toIso8601String(),
+      };
+
+      if (existing != null) {
+        await supabase
+            .from('user_books')
+            .update(bookData)
+            .eq('id', existing['id']);
+      } else {
+        await supabase
+            .from('user_books')
+            .insert({
+          'user_id': user.id,
+          'book_title': title,
+          ...bookData,
+        });
+      }
+    } catch (error) {
+      debugPrint(
+        'Could not save reading history: $error',
+      );
+    }
+  }
+
+  // ============================================================
+  // SAVE COLLECTION STATUS
+  // ============================================================
+
+  Future<void> _saveCollectionStatus({
+    required String title,
+    required String author,
+    required String? image,
+    required String status,
+  }) async {
+    try {
+      final supabase =
+          Supabase.instance.client;
+
+      final user =
+          supabase.auth.currentUser;
+
+      if (user == null) {
+        throw Exception(
+          'User not logged in.',
+        );
+      }
+
+      final existing = await supabase
+          .from('user_books')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('book_title', title)
+          .maybeSingle();
+
+      final bookData = {
+        'book_author': author,
+        'book_image': image,
+        'collection_status': status,
+      };
+
+      if (existing != null) {
+        await supabase
+            .from('user_books')
+            .update(bookData)
+            .eq('id', existing['id']);
+      } else {
+        await supabase
+            .from('user_books')
+            .insert({
+          'user_id': user.id,
+          'book_title': title,
+          ...bookData,
+        });
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _collectionStatusText(status),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not save the book: $error',
+          ),
+        ),
+      );
+    }
+  }
+
+  String _collectionStatusText(
+    String status,
+  ) {
+    switch (status) {
+      case 'want_to_read':
+        return 'Added to Want to Read.';
+
+      case 'reading':
+        return 'Added to Reading.';
+
+      case 'already_read':
+        return 'Added to Already Read.';
+
+      default:
+        return 'Book saved.';
+    }
+  }
+
+  // ============================================================
+  // SAVE FAVORITE
+  // ============================================================
+
+  Future<void> _toggleFavorite({
+    required String title,
+    required String author,
+    required String? image,
+  }) async {
+    try {
+      final supabase =
+          Supabase.instance.client;
+
+      final user =
+          supabase.auth.currentUser;
+
+      if (user == null) {
+        throw Exception(
+          'User not logged in.',
+        );
+      }
+
+      final existing = await supabase
+          .from('user_books')
+          .select('id, is_favorite')
+          .eq('user_id', user.id)
+          .eq('book_title', title)
+          .maybeSingle();
+
+      if (existing != null) {
+        final currentlyFavorite =
+            existing['is_favorite'] == true;
+
+        await supabase
+            .from('user_books')
+            .update({
+          'book_author': author,
+          'book_image': image,
+          'is_favorite':
+              !currentlyFavorite,
+        })
+            .eq(
+              'id',
+              existing['id'],
+            );
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context)
+            .showSnackBar(
+          SnackBar(
+            content: Text(
+              currentlyFavorite
+                  ? 'Removed from Favorites.'
+                  : 'Added to Favorites.',
+            ),
+          ),
+        );
+      } else {
+        await supabase
+            .from('user_books')
+            .insert({
+          'user_id': user.id,
+          'book_title': title,
+          'book_author': author,
+          'book_image': image,
+          'is_favorite': true,
+        });
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context)
+            .showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Added to Favorites.',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not update Favorites: $error',
+          ),
+        ),
+      );
+    }
+  }
+
+  // ============================================================
+  // BOOK OPTIONS
+  // ============================================================
+
+  Future<void> _showBookOptions(
+    Map<String, dynamic> book,
+  ) async {
+    await _saveReadingHistory(
+      title: book['title'].toString(),
+      author: book['author'].toString(),
+      image: book['image']?.toString(),
+    );
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cream,
+      shape:
+          const RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.vertical(
+          top: Radius.circular(18),
+        ),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding:
+                const EdgeInsets.symmetric(
+              vertical: 14,
+            ),
+            child: Column(
+              mainAxisSize:
+                  MainAxisSize.min,
+              children: [
+                Text(
+                  book['title'].toString(),
+                  textAlign:
+                      TextAlign.center,
+                  style:
+                      const TextStyle(
+                    color: maroon,
+                    fontFamily: 'Georgia',
+                    fontSize: 16,
+                    fontWeight:
+                        FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 4),
+
+                Text(
+                  book['author'].toString(),
+                  textAlign:
+                      TextAlign.center,
+                  style:
+                      const TextStyle(
+                    color: maroon,
+                    fontFamily: 'Georgia',
+                    fontSize: 12,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                ListTile(
+                  leading: const Icon(
+                    Icons.bookmark_border,
+                    color: maroon,
+                  ),
+                  title: const Text(
+                    'Want to Read',
+                    style: TextStyle(
+                      color: maroon,
+                      fontFamily: 'Georgia',
+                    ),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(
+                      sheetContext,
+                    );
+
+                    await _saveCollectionStatus(
+                      title:
+                          book['title']
+                              .toString(),
+                      author:
+                          book['author']
+                              .toString(),
+                      image:
+                          book['image']
+                              ?.toString(),
+                      status:
+                          'want_to_read',
+                    );
+                  },
+                ),
+
+                ListTile(
+                  leading: const Icon(
+                    Icons.menu_book,
+                    color: maroon,
+                  ),
+                  title: const Text(
+                    'Reading',
+                    style: TextStyle(
+                      color: maroon,
+                      fontFamily: 'Georgia',
+                    ),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(
+                      sheetContext,
+                    );
+
+                    await _saveCollectionStatus(
+                      title:
+                          book['title']
+                              .toString(),
+                      author:
+                          book['author']
+                              .toString(),
+                      image:
+                          book['image']
+                              ?.toString(),
+                      status: 'reading',
+                    );
+                  },
+                ),
+
+                ListTile(
+                  leading: const Icon(
+                    Icons.check_circle_outline,
+                    color: maroon,
+                  ),
+                  title: const Text(
+                    'Already Read',
+                    style: TextStyle(
+                      color: maroon,
+                      fontFamily: 'Georgia',
+                    ),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(
+                      sheetContext,
+                    );
+
+                    await _saveCollectionStatus(
+                      title:
+                          book['title']
+                              .toString(),
+                      author:
+                          book['author']
+                              .toString(),
+                      image:
+                          book['image']
+                              ?.toString(),
+                      status:
+                          'already_read',
+                    );
+                  },
+                ),
+
+                ListTile(
+                  leading: const Icon(
+                    Icons.favorite_border,
+                    color: maroon,
+                  ),
+                  title: const Text(
+                    'Add to Favorites',
+                    style: TextStyle(
+                      color: maroon,
+                      fontFamily: 'Georgia',
+                    ),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(
+                      sheetContext,
+                    );
+
+                    await _toggleFavorite(
+                      title:
+                          book['title']
+                              .toString(),
+                      author:
+                          book['author']
+                              .toString(),
+                      image:
+                          book['image']
+                              ?.toString(),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ============================================================
   // BUILD
   // ============================================================
 
@@ -167,7 +693,8 @@ class _SearchScreenState extends State<SearchScreen> {
                       // SEARCH BAR
                       Padding(
                         padding:
-                            const EdgeInsets.symmetric(
+                            const EdgeInsets
+                                .symmetric(
                           horizontal: 32,
                         ),
                         child: SizedBox(
@@ -178,7 +705,8 @@ class _SearchScreenState extends State<SearchScreen> {
                             onSubmitted:
                                 performSearch,
                             textInputAction:
-                                TextInputAction.search,
+                                TextInputAction
+                                    .search,
                             style:
                                 const TextStyle(
                               color: Colors.white,
@@ -187,7 +715,8 @@ class _SearchScreenState extends State<SearchScreen> {
                             ),
                             decoration:
                                 InputDecoration(
-                              hintText: 'Search',
+                              hintText:
+                                  'Search',
                               hintStyle:
                                   const TextStyle(
                                 color: Colors.white,
@@ -303,10 +832,11 @@ class _SearchScreenState extends State<SearchScreen> {
                     const SizedBox(width: 7),
 
                     Expanded(
-                      child: GestureDetector(
+                      child:
+                          GestureDetector(
                         onTap: () {
-                          searchController.text =
-                              item;
+                          searchController
+                              .text = item;
 
                           performSearch(item);
                         },
@@ -314,11 +844,13 @@ class _SearchScreenState extends State<SearchScreen> {
                           item,
                           maxLines: 1,
                           overflow:
-                              TextOverflow.ellipsis,
+                              TextOverflow
+                                  .ellipsis,
                           style:
                               const TextStyle(
                             color: Colors.white,
-                            fontFamily: 'Georgia',
+                            fontFamily:
+                                'Georgia',
                             fontSize: 10,
                           ),
                         ),
@@ -327,9 +859,12 @@ class _SearchScreenState extends State<SearchScreen> {
 
                     GestureDetector(
                       onTap: () {
-                        removeHistoryItem(item);
+                        removeHistoryItem(
+                          item,
+                        );
                       },
-                      child: const Icon(
+                      child:
+                          const Icon(
                         Icons.close,
                         color: Colors.white,
                         size: 18,
@@ -366,6 +901,17 @@ class _SearchScreenState extends State<SearchScreen> {
   // ============================================================
 
   Widget _buildSearchResults() {
+    if (isSearching) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 30),
+        child: Center(
+          child: CircularProgressIndicator(
+            color: Colors.white,
+          ),
+        ),
+      );
+    }
+
     if (searchResults.isEmpty) {
       return const Padding(
         padding: EdgeInsets.only(top: 30),
@@ -401,70 +947,164 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget _bookCard(
     Map<String, dynamic> book,
   ) {
-    return Container(
-      margin: const EdgeInsets.only(
-        bottom: 12,
+    final image =
+        book['image']?.toString() ?? '';
+
+    return GestureDetector(
+      onTap: () {
+        _showBookOptions(book);
+      },
+      child: Container(
+        margin: const EdgeInsets.only(
+          bottom: 12,
+        ),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: cream,
+          borderRadius:
+              BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 70,
+              decoration: BoxDecoration(
+                borderRadius:
+                    BorderRadius.circular(2),
+                color: Colors.white,
+              ),
+              child: _buildBookImage(
+                image,
+              ),
+            ),
+
+            const SizedBox(width: 12),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    book['title'].toString(),
+                    maxLines: 2,
+                    overflow:
+                        TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: maroon,
+                      fontFamily: 'Georgia',
+                      fontSize: 13,
+                      fontWeight:
+                          FontWeight.bold,
+                    ),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  Text(
+                    book['author'].toString(),
+                    maxLines: 1,
+                    overflow:
+                        TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: maroon,
+                      fontFamily: 'Georgia',
+                      fontSize: 11,
+                    ),
+                  ),
+
+                  const SizedBox(height: 5),
+
+                  if (book['rating'] != null)
+                    Text(
+                      'Rating: '
+                      '${(book['rating'] as num).toStringAsFixed(1)}',
+                      style: const TextStyle(
+                        color: maroon,
+                        fontFamily:
+                            'Georgia',
+                        fontSize: 9,
+                      ),
+                    ),
+
+                  const SizedBox(height: 3),
+
+                  const Text(
+                    'Tap for options',
+                    style: TextStyle(
+                      color: maroon,
+                      fontFamily: 'Georgia',
+                      fontSize: 9,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: cream,
+    );
+  }
+
+  // ============================================================
+  // BOOK IMAGE
+  // ============================================================
+
+  Widget _buildBookImage(
+    String image,
+  ) {
+    if (image.isEmpty) {
+      return const Center(
+        child: Icon(
+          Icons.menu_book,
+          color: maroon,
+          size: 28,
+        ),
+      );
+    }
+
+    if (image.startsWith('http')) {
+      return ClipRRect(
         borderRadius:
-            BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 70,
-            decoration: BoxDecoration(
-              borderRadius:
-                  BorderRadius.circular(2),
+            BorderRadius.circular(2),
+        child: Image.network(
+          image,
+          width: 48,
+          height: 70,
+          fit: BoxFit.cover,
+          errorBuilder:
+              (context, error, stackTrace) {
+            return const Center(
+              child: Icon(
+                Icons.menu_book,
+                color: maroon,
+                size: 28,
+              ),
+            );
+          },
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius:
+          BorderRadius.circular(2),
+      child: Image.asset(
+        image,
+        width: 48,
+        height: 70,
+        fit: BoxFit.cover,
+        errorBuilder:
+            (context, error, stackTrace) {
+          return const Center(
+            child: Icon(
+              Icons.menu_book,
+              color: maroon,
+              size: 28,
             ),
-            child: Image.asset(
-              book['image'],
-              fit: BoxFit.cover,
-              errorBuilder:
-                  (context, error, stackTrace) {
-                return const Icon(
-                  Icons.menu_book,
-                  color: maroon,
-                );
-              },
-            ),
-          ),
-
-          const SizedBox(width: 12),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Text(
-                  book['title'],
-                  style: const TextStyle(
-                    color: maroon,
-                    fontFamily: 'Georgia',
-                    fontSize: 13,
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 4),
-
-                Text(
-                  book['author'],
-                  style: const TextStyle(
-                    color: maroon,
-                    fontFamily: 'Georgia',
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }

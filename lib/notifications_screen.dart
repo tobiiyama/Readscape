@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'topbooks_screen.dart';
 import 'history_screen.dart';
@@ -24,38 +25,323 @@ class _NotificationsScreenState
       Color(0xFF7A1F2B);
 
   final List<Map<String, dynamic>>
-      notifications = [
-    {
-      'icon': Icons.favorite,
-      'title': 'Added to Favorites',
-      'message':
-          'Heated Rivalry was added to your favorites.',
-      'time': 'Today',
-    },
-    {
-      'icon': Icons.collections_bookmark,
-      'title': 'Added to Collection',
-      'message':
-          'Fourth Wing was added to your collection.',
-      'time': 'Yesterday',
-    },
-    {
-      'icon': Icons.star,
-      'title': 'Book Rated',
-      'message':
-          'You rated The Seven Husbands of Evelyn Hugo 5.0.',
-      'time': '2 days ago',
-    },
-    {
-      'icon': Icons.menu_book,
-      'title': 'Reading History',
-      'message':
-          'You finished reading The Song of Achilles.',
-      'time': '5 days ago',
-    },
-  ];
+      notifications = [];
+
+  bool isLoadingNotifications = true;
 
   String activeNav = '';
+
+  // ============================================================
+  // LOAD NOTIFICATIONS
+  // ============================================================
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
+  }
+
+  Future<void> _loadNotifications() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+
+      if (user == null) {
+        if (!mounted) return;
+
+        setState(() {
+          isLoadingNotifications = false;
+        });
+
+        return;
+      }
+
+      final data = await supabase
+          .from('user_books')
+          .select(
+            'book_title, rating, collection_status, is_favorite, last_read_at, created_at',
+          )
+          .eq('user_id', user.id)
+          .order(
+            'created_at',
+            ascending: false,
+          );
+
+      if (!mounted) return;
+
+      final List<Map<String, dynamic>>
+          loadedNotifications = [];
+
+      for (final row in data) {
+        final title =
+            row['book_title']?.toString() ??
+                'Unknown book';
+
+        final rating = row['rating'];
+
+        final collectionStatus =
+            row['collection_status']
+                ?.toString();
+
+        final isFavorite =
+            row['is_favorite'] == true;
+
+        final lastReadAt =
+            row['last_read_at'];
+
+        final createdAt =
+            row['created_at'];
+
+        // --------------------------------------------------------
+        // FAVORITE NOTIFICATION
+        // --------------------------------------------------------
+
+        if (isFavorite) {
+          loadedNotifications.add({
+            'icon': Icons.favorite,
+            'title': 'Added to Favorites',
+            'message':
+                '$title was added to your favorites.',
+            'time': _formatRelativeTime(
+              createdAt,
+            ),
+            'date': _parseDate(createdAt),
+          });
+        }
+
+        // --------------------------------------------------------
+        // COLLECTION NOTIFICATION
+        // --------------------------------------------------------
+
+        if (collectionStatus != null) {
+          String collectionText;
+
+          switch (collectionStatus) {
+            case 'want_to_read':
+              collectionText =
+                  'Want to Read';
+              break;
+
+            case 'reading':
+              collectionText =
+                  'Reading';
+              break;
+
+            case 'already_read':
+              collectionText =
+                  'Already Read';
+              break;
+
+            default:
+              collectionText =
+                  'Collection';
+          }
+
+          loadedNotifications.add({
+            'icon':
+                Icons.collections_bookmark,
+            'title':
+                'Added to Collection',
+            'message':
+                '$title was added to your $collectionText list.',
+            'time': _formatRelativeTime(
+              createdAt,
+            ),
+            'date': _parseDate(createdAt),
+          });
+        }
+
+        // --------------------------------------------------------
+        // RATING NOTIFICATION
+        // --------------------------------------------------------
+
+        if (rating != null) {
+          final ratingValue =
+              (rating as num).toDouble();
+
+          loadedNotifications.add({
+            'icon': Icons.star,
+            'title': 'Book Rated',
+            'message':
+                'You rated $title ${ratingValue.toStringAsFixed(1)}.',
+            'time': _formatRelativeTime(
+              createdAt,
+            ),
+            'date': _parseDate(createdAt),
+          });
+        }
+
+        // --------------------------------------------------------
+        // READING HISTORY NOTIFICATION
+        // --------------------------------------------------------
+
+        if (lastReadAt != null) {
+          loadedNotifications.add({
+            'icon': Icons.menu_book,
+            'title': 'Reading History',
+            'message':
+                'You opened $title.',
+            'time': _formatRelativeTime(
+              lastReadAt,
+            ),
+            'date': _parseDate(lastReadAt),
+          });
+        }
+      }
+
+      // ----------------------------------------------------------
+      // SORT NEWEST FIRST
+      // ----------------------------------------------------------
+
+      loadedNotifications.sort(
+        (a, b) {
+          final DateTime dateA =
+              a['date'] as DateTime;
+
+          final DateTime dateB =
+              b['date'] as DateTime;
+
+          return dateB.compareTo(dateA);
+        },
+      );
+
+      setState(() {
+        notifications
+          ..clear()
+          ..addAll(
+            loadedNotifications,
+          );
+
+        isLoadingNotifications = false;
+      });
+    } catch (error) {
+      debugPrint(
+        'Could not load notifications: $error',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        isLoadingNotifications = false;
+      });
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not load notifications: $error',
+          ),
+        ),
+      );
+    }
+  }
+
+  // ============================================================
+  // PARSE DATE
+  // ============================================================
+
+  DateTime _parseDate(
+    dynamic value,
+  ) {
+    if (value == null) {
+      return DateTime.fromMillisecondsSinceEpoch(
+        0,
+      );
+    }
+
+    try {
+      return DateTime.parse(
+        value.toString(),
+      ).toLocal();
+    } catch (_) {
+      return DateTime.fromMillisecondsSinceEpoch(
+        0,
+      );
+    }
+  }
+
+  // ============================================================
+  // FORMAT RELATIVE TIME
+  // ============================================================
+
+  String _formatRelativeTime(
+    dynamic value,
+  ) {
+    final date = _parseDate(value);
+
+    if (date.millisecondsSinceEpoch == 0) {
+      return '';
+    }
+
+    final now = DateTime.now();
+
+    final difference =
+        now.difference(date);
+
+    if (difference.inMinutes < 1) {
+      return 'Just now';
+    }
+
+    if (difference.inMinutes < 60) {
+      final minutes =
+          difference.inMinutes;
+
+      return minutes == 1
+          ? '1 minute ago'
+          : '$minutes minutes ago';
+    }
+
+    if (difference.inHours < 24) {
+      final hours =
+          difference.inHours;
+
+      return hours == 1
+          ? '1 hour ago'
+          : '$hours hours ago';
+    }
+
+    if (difference.inDays < 7) {
+      final days =
+          difference.inDays;
+
+      return days == 1
+          ? 'Yesterday'
+          : '$days days ago';
+    }
+
+    return _formatDate(date);
+  }
+
+  // ============================================================
+  // FORMAT DATE
+  // ============================================================
+
+  String _formatDate(
+    DateTime date,
+  ) {
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+
+    return '${months[date.month - 1]} '
+        '${date.day}, '
+        '${date.year}';
+  }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -116,12 +402,45 @@ class _NotificationsScreenState
 
                   const SizedBox(height: 24),
 
-                  ...notifications.map(
-                    (notification) =>
-                        _notificationCard(
-                      notification,
+                  if (isLoadingNotifications)
+                    const Padding(
+                      padding:
+                          EdgeInsets.only(
+                        top: 30,
+                      ),
+                      child: Center(
+                        child:
+                            CircularProgressIndicator(
+                          color: Colors.white,
+                        ),
+                      ),
+                    )
+                  else if (notifications.isEmpty)
+                    const Padding(
+                      padding:
+                          EdgeInsets.only(
+                        top: 30,
+                      ),
+                      child: Center(
+                        child: Text(
+                          'No notifications yet.',
+                          style: TextStyle(
+                            color:
+                                Colors.white,
+                            fontFamily:
+                                'Georgia',
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    ...notifications.map(
+                      (notification) =>
+                          _notificationCard(
+                        notification,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -130,6 +449,10 @@ class _NotificationsScreenState
       ),
     );
   }
+
+  // ============================================================
+  // TOP NAVIGATION
+  // ============================================================
 
   Widget _buildTopNavigation(
       BuildContext context) {
@@ -271,6 +594,10 @@ class _NotificationsScreenState
     );
   }
 
+  // ============================================================
+  // NAVIGATION TEXT
+  // ============================================================
+
   Widget _navText(
     String text,
     bool isActive,
@@ -301,6 +628,10 @@ class _NotificationsScreenState
       ),
     );
   }
+
+  // ============================================================
+  // NOTIFICATION CARD
+  // ============================================================
 
   Widget _notificationCard(
     Map<String, dynamic> notification,

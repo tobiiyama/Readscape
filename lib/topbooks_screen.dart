@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'search_screen.dart';
 import 'history_screen.dart';
@@ -19,69 +23,271 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
 
   String activeNav = 'Top 10';
 
-  final List<Map<String, dynamic>> books = const [
-    {
-      'rank': 1,
-      'title': 'The Seven Husbands of Evelyn Hugo',
-      'author': 'Taylor Jenkins Reid',
-      'rating': 5.0,
-    },
-    {
-      'rank': 2,
-      'title': 'Heated Rivalry',
-      'author': 'Rachel Reid',
-      'rating': 4.5,
-      'image': 'assets/images/heated_rivalry.jpg',
-    },
-    {
-      'rank': 3,
-      'title': 'Fourth Wing',
-      'author': 'Rebecca Yarros',
-      'rating': 4.0,
-    },
-    {
-      'rank': 4,
-      'title': 'The Song of Achilles',
-      'author': 'Madeline Miller',
-      'rating': 3.5,
-    },
-    {
-      'rank': 5,
-      'title': 'It Ends with Us',
-      'author': 'Colleen Hoover',
-      'rating': 3.0,
-    },
-    {
-      'rank': 6,
-      'title': 'A Court of Thorns and Roses',
-      'author': 'Sarah J. Maas',
-      'rating': 4.5,
-    },
-    {
-      'rank': 7,
-      'title': 'The Love Hypothesis',
-      'author': 'Ali Hazelwood',
-      'rating': 3.0,
-    },
-    {
-      'rank': 8,
-      'title': 'Verity',
-      'author': 'Colleen Hoover',
-      'rating': 2.5,
-    },
-    {
-      'rank': 9,
-      'title': 'Red, White & Royal Blue',
-      'author': 'Casey McQuiston',
-      'rating': 4.0,
-    },
-    {
-      'rank': 10,
-      'title': 'The Midnight Library',
-      'author': 'Matt Haig',
-      'rating': 3.5,
-    },
-  ];
+  List<Map<String, dynamic>> books = [];
+
+  bool isLoadingBooks = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTopBooks();
+  }
+
+  Future<void> _loadTopBooks() async {
+    try {
+      final trendingUrl = Uri.parse(
+        'https://openlibrary.org/trending/daily.json?limit=10',
+      );
+
+      final trendingResponse = await http.get(
+        trendingUrl,
+        headers: const {
+          'User-Agent': 'Readscape School Project',
+        },
+      );
+
+      if (trendingResponse.statusCode != 200) {
+        throw Exception(
+          'Could not load trending books.',
+        );
+      }
+
+      final trendingData =
+          jsonDecode(trendingResponse.body)
+              as Map<String, dynamic>;
+
+      final works =
+          trendingData['works'] as List<dynamic>? ?? [];
+
+      final List<Map<String, dynamic>> loadedBooks = [];
+
+      for (int i = 0;
+          i < works.length && i < 10;
+          i++) {
+        final work =
+            works[i] as Map<String, dynamic>;
+
+        final trendingTitle =
+            work['title']?.toString() ??
+                'Unknown Title';
+
+        final details =
+            await _searchBookDetails(
+          trendingTitle,
+        );
+
+        final title =
+            details['title']?.toString() ??
+                trendingTitle;
+
+        final author =
+            details['author']?.toString() ??
+                'Unknown Author';
+
+        final image =
+            details['image']?.toString();
+
+        final rating =
+            details['rating'] is num
+                ? (details['rating'] as num)
+                    .toDouble()
+                : 0.0;
+
+        loadedBooks.add({
+          'rank': i + 1,
+          'title': title,
+          'author': author,
+          'rating': rating,
+          'image': image,
+        });
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        books = loadedBooks;
+        isLoadingBooks = false;
+      });
+    } catch (error) {
+      debugPrint(
+        'Could not load top books: $error',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        isLoadingBooks = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not load books: $error',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<Map<String, dynamic>> _searchBookDetails(
+    String title,
+  ) async {
+    try {
+      final url = Uri.https(
+        'openlibrary.org',
+        '/search.json',
+        {
+          'title': title,
+          'limit': '1',
+          'fields':
+              'title,author_name,cover_i,'
+              'ratings_average,ratings_count',
+        },
+      );
+
+      final response = await http.get(
+        url,
+        headers: const {
+          'User-Agent': 'Readscape School Project',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        return {};
+      }
+
+      final data =
+          jsonDecode(response.body)
+              as Map<String, dynamic>;
+
+      final docs =
+          data['docs'] as List<dynamic>? ?? [];
+
+      if (docs.isEmpty) {
+        return {};
+      }
+
+      final book =
+          docs.first as Map<String, dynamic>;
+
+      String? author;
+
+      final authorNames =
+          book['author_name'];
+
+      if (authorNames is List &&
+          authorNames.isNotEmpty) {
+        author =
+            authorNames.first.toString();
+      }
+
+      String? image;
+
+      final coverId =
+          book['cover_i'];
+
+      if (coverId != null) {
+        image =
+            'https://covers.openlibrary.org/b/id/'
+            '$coverId-L.jpg';
+      }
+
+      double? rating;
+
+      final ratingsAverage =
+          book['ratings_average'];
+
+      if (ratingsAverage is num) {
+        rating =
+            ratingsAverage.toDouble();
+      }
+
+      return {
+        'title':
+            book['title']?.toString(),
+        'author': author,
+        'image': image,
+        'rating': rating,
+      };
+    } catch (error) {
+      debugPrint(
+        'Could not get details for "$title": $error',
+      );
+
+      return {};
+    }
+  }
+
+  Future<void> _saveCollectionStatus({
+    required String title,
+    required String author,
+    required String? image,
+    required String status,
+  }) async {
+    try {
+      final supabase =
+          Supabase.instance.client;
+
+      final user =
+          supabase.auth.currentUser;
+
+      if (user == null) {
+        throw Exception(
+          'User not logged in.',
+        );
+      }
+
+      final existing = await supabase
+          .from('user_books')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('book_title', title)
+          .maybeSingle();
+
+      if (existing != null) {
+        await supabase
+            .from('user_books')
+            .update({
+          'book_author': author,
+          'book_image': image,
+          'collection_status': status,
+        }).eq(
+          'id',
+          existing['id'],
+        );
+      } else {
+        await supabase
+            .from('user_books')
+            .insert({
+          'user_id': user.id,
+          'book_title': title,
+          'book_author': author,
+          'book_image': image,
+          'collection_status': status,
+        });
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$title added to your collection.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not add book: $error',
+          ),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -123,7 +329,7 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
                       horizontal: 16,
                     ),
                     child: Text(
-                      "Browse today's most popular and highest-rated books",
+                      "Browse today's most popular and trending books",
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
@@ -136,9 +342,38 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
 
                   const SizedBox(height: 24),
 
-                  ...books.map(
-                    (book) => _bookCard(book),
-                  ),
+                  if (isLoadingBooks)
+                    const Padding(
+                      padding: EdgeInsets.only(
+                        top: 30,
+                      ),
+                      child: Center(
+                        child:
+                            CircularProgressIndicator(
+                          color: Colors.white,
+                        ),
+                      ),
+                    )
+                  else if (books.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(
+                        top: 30,
+                      ),
+                      child: Center(
+                        child: Text(
+                          'No books found.',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontFamily: 'Georgia',
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    ...books.map(
+                      (book) => _bookCard(book),
+                    ),
                 ],
               ),
             ),
@@ -148,7 +383,9 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
     );
   }
 
-  Widget _buildTopNavigation(BuildContext context) {
+  Widget _buildTopNavigation(
+    BuildContext context,
+  ) {
     return Container(
       height: 64,
       color: cream,
@@ -164,7 +401,9 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
                     color: maroon,
                   ),
                   onPressed: () {
-                    Scaffold.of(drawerContext).openDrawer();
+                    Scaffold.of(
+                      drawerContext,
+                    ).openDrawer();
                   },
                 );
               },
@@ -173,7 +412,8 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
 
           Expanded(
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
               children: [
                 _navText(
                   'Top 10',
@@ -309,10 +549,9 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
           color: maroon,
           fontFamily: 'Georgia',
           fontSize: 14,
-          fontWeight:
-              isActive
-                  ? FontWeight.bold
-                  : FontWeight.normal,
+          fontWeight: isActive
+              ? FontWeight.bold
+              : FontWeight.normal,
         ),
       ),
     );
@@ -321,6 +560,11 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
   Widget _bookCard(
     Map<String, dynamic> book,
   ) {
+    final image = book['image'];
+
+    final rating =
+        (book['rating'] as num).toDouble();
+
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: 16,
@@ -354,13 +598,26 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
                   BorderRadius.circular(4),
               color: cream,
             ),
-            child: book['image'] != null
+            child: image != null &&
+                    image.toString().isNotEmpty
                 ? ClipRRect(
                     borderRadius:
                         BorderRadius.circular(4),
-                    child: Image.asset(
-                      book['image'],
+                    child: Image.network(
+                      image.toString(),
                       fit: BoxFit.cover,
+                      errorBuilder:
+                          (
+                            context,
+                            error,
+                            stackTrace,
+                          ) {
+                        return const Icon(
+                          Icons.menu_book,
+                          color: maroon,
+                          size: 32,
+                        );
+                      },
                     ),
                   )
                 : const Icon(
@@ -378,7 +635,7 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
                   CrossAxisAlignment.start,
               children: [
                 Text(
-                  book['title'],
+                  book['title'].toString(),
                   style: const TextStyle(
                     color: Colors.white,
                     fontFamily: 'Georgia',
@@ -390,7 +647,7 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
                 const SizedBox(height: 4),
 
                 Text(
-                  book['author'],
+                  book['author'].toString(),
                   style: const TextStyle(
                     color: Colors.white,
                     fontFamily: 'Georgia',
@@ -402,10 +659,14 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
 
                 Row(
                   children: [
-                    ..._ratingStars(book['rating']),
+                    ..._ratingStars(rating),
+
                     const SizedBox(width: 6),
+
                     Text(
-                      '${book['rating']}',
+                      rating > 0
+                          ? rating.toStringAsFixed(1)
+                          : 'No rating',
                       style: const TextStyle(
                         color: Colors.white,
                         fontFamily: 'Georgia',
@@ -422,8 +683,19 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
                   runSpacing: 8,
                   children: [
                     ElevatedButton(
-                      onPressed: () {},
-                      style: ElevatedButton.styleFrom(
+                      onPressed: () {
+                        _saveCollectionStatus(
+                          title:
+                              book['title'].toString(),
+                          author:
+                              book['author'].toString(),
+                          image:
+                              image?.toString(),
+                          status: 'want_to_read',
+                        );
+                      },
+                      style:
+                          ElevatedButton.styleFrom(
                         backgroundColor: cream,
                         foregroundColor: maroon,
                         padding:
@@ -446,8 +718,19 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
                     ),
 
                     ElevatedButton(
-                      onPressed: () {},
-                      style: ElevatedButton.styleFrom(
+                      onPressed: () {
+                        _saveCollectionStatus(
+                          title:
+                              book['title'].toString(),
+                          author:
+                              book['author'].toString(),
+                          image:
+                              image?.toString(),
+                          status: 'already_read',
+                        );
+                      },
+                      style:
+                          ElevatedButton.styleFrom(
                         backgroundColor: cream,
                         foregroundColor: maroon,
                         padding:
@@ -478,8 +761,10 @@ class _TopBooksScreenState extends State<TopBooksScreen> {
     );
   }
 
-  List<Widget> _ratingStars(double rating) {
-    List<Widget> stars = [];
+  List<Widget> _ratingStars(
+    double rating,
+  ) {
+    final List<Widget> stars = [];
 
     for (int i = 1; i <= 5; i++) {
       if (rating >= i) {

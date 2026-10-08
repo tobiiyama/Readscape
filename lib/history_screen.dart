@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'topbooks_screen.dart';
 import 'search_screen.dart';
@@ -23,62 +24,131 @@ class _HistoryScreenState
       Color(0xFF7A1F2B);
 
   final List<Map<String, dynamic>> historyBooks =
-      const [
-    {
-      'title':
-          'The Seven Husbands of Evelyn Hugo',
-      'author': 'Taylor Jenkins Reid',
-      'rating': 5.0,
-      'lastRead': 'September 28, 2026',
-    },
-    {
-      'title': 'Heated Rivalry',
-      'author': 'Rachel Reid',
-      'rating': 4.5,
-      'lastRead': 'September 24, 2026',
-      'image':
-          'assets/images/heated_rivalry.jpg',
-    },
-    {
-      'title': 'Fourth Wing',
-      'author': 'Rebecca Yarros',
-      'rating': 4.0,
-      'lastRead': 'September 20, 2026',
-    },
-    {
-      'title': 'The Song of Achilles',
-      'author': 'Madeline Miller',
-      'rating': 4.5,
-      'lastRead': 'September 15, 2026',
-    },
-    {
-      'title': 'It Ends with Us',
-      'author': 'Colleen Hoover',
-      'rating': 3.5,
-      'lastRead': 'September 10, 2026',
-    },
-    {
-      'title':
-          'A Court of Thorns and Roses',
-      'author': 'Sarah J. Maas',
-      'rating': 4.0,
-      'lastRead': 'September 5, 2026',
-    },
-    {
-      'title': 'The Love Hypothesis',
-      'author': 'Ali Hazelwood',
-      'rating': 3.5,
-      'lastRead': 'August 29, 2026',
-    },
-    {
-      'title': 'Verity',
-      'author': 'Colleen Hoover',
-      'rating': 3.0,
-      'lastRead': 'August 22, 2026',
-    },
-  ];
+      [];
+
+  bool isLoadingHistory = true;
 
   String activeNav = 'History';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    try {
+      final supabase =
+          Supabase.instance.client;
+
+      final user =
+          supabase.auth.currentUser;
+
+      if (user == null) {
+        if (!mounted) return;
+
+        setState(() {
+          isLoadingHistory = false;
+        });
+
+        return;
+      }
+
+      final data = await supabase
+          .from('user_books')
+          .select(
+            'book_title, book_author, book_image, rating, last_read_at',
+          )
+          .eq('user_id', user.id)
+          .not('last_read_at', 'is', null)
+          .order(
+            'last_read_at',
+            ascending: false,
+          );
+
+      if (!mounted) return;
+
+      setState(() {
+        historyBooks.clear();
+
+        for (final row in data) {
+          final lastRead =
+              row['last_read_at'];
+
+          historyBooks.add({
+            'title':
+                row['book_title'] ??
+                    'Unknown title',
+            'author':
+                row['book_author'] ??
+                    'Unknown author',
+            'image':
+                row['book_image'],
+            'rating':
+                row['rating'] != null
+                    ? (row['rating'] as num)
+                        .toDouble()
+                    : 0.0,
+            'lastRead':
+                lastRead != null
+                    ? _formatDate(
+                        DateTime.parse(
+                          lastRead.toString(),
+                        ),
+                      )
+                    : '',
+          });
+        }
+
+        isLoadingHistory = false;
+      });
+    } catch (error) {
+      debugPrint(
+        'Could not load history: $error',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        isLoadingHistory = false;
+      });
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not load History: $error',
+          ),
+        ),
+      );
+    }
+  }
+
+  String _formatDate(
+    DateTime date,
+  ) {
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+
+    final localDate =
+        date.toLocal();
+
+    return '${months[localDate.month - 1]} '
+        '${localDate.day}, '
+        '${localDate.year}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -92,7 +162,8 @@ class _HistoryScreenState
 
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.only(
+                padding:
+                    const EdgeInsets.only(
                   top: 24,
                   bottom: 24,
                 ),
@@ -139,10 +210,45 @@ class _HistoryScreenState
 
                   const SizedBox(height: 24),
 
-                  ...historyBooks.map(
-                    (book) =>
-                        _historyBookCard(book),
-                  ),
+                  if (isLoadingHistory)
+                    const Padding(
+                      padding:
+                          EdgeInsets.only(
+                        top: 30,
+                      ),
+                      child: Center(
+                        child:
+                            CircularProgressIndicator(
+                          color: Colors.white,
+                        ),
+                      ),
+                    )
+                  else if (historyBooks.isEmpty)
+                    const Padding(
+                      padding:
+                          EdgeInsets.only(
+                        top: 30,
+                      ),
+                      child: Center(
+                        child: Text(
+                          'No reading history yet.',
+                          style: TextStyle(
+                            color:
+                                Colors.white,
+                            fontFamily:
+                                'Georgia',
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    ...historyBooks.map(
+                      (book) =>
+                          _historyBookCard(
+                        book,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -153,7 +259,8 @@ class _HistoryScreenState
   }
 
   Widget _buildTopNavigation(
-      BuildContext context) {
+    BuildContext context,
+  ) {
     return Container(
       height: 64,
       color: cream,
@@ -185,7 +292,7 @@ class _HistoryScreenState
               children: [
                 _navText(
                   'Top 10',
-                  activeNav == 'Top 10',
+                  false,
                   () {
                     Navigator.pushReplacement(
                       context,
@@ -201,19 +308,15 @@ class _HistoryScreenState
 
                 _navText(
                   'History',
-                  activeNav == 'History',
-                  () {
-                    setState(() {
-                      activeNav = 'History';
-                    });
-                  },
+                  true,
+                  () {},
                 ),
 
                 const SizedBox(width: 20),
 
                 _navText(
                   'Favorites',
-                  activeNav == 'Favorites',
+                  false,
                   () {
                     Navigator.pushReplacement(
                       context,
@@ -310,7 +413,8 @@ class _HistoryScreenState
         ),
         minimumSize: Size.zero,
         tapTargetSize:
-            MaterialTapTargetSize.shrinkWrap,
+            MaterialTapTargetSize
+                .shrinkWrap,
       ),
       child: Text(
         text,
@@ -330,6 +434,11 @@ class _HistoryScreenState
   Widget _historyBookCard(
     Map<String, dynamic> book,
   ) {
+    final double rating =
+        (book['rating'] as num?)
+                ?.toDouble() ??
+            0.0;
+
     return Padding(
       padding:
           const EdgeInsets.symmetric(
@@ -348,22 +457,7 @@ class _HistoryScreenState
               borderRadius:
                   BorderRadius.circular(4),
             ),
-            child: book['image'] != null
-                ? ClipRRect(
-                    borderRadius:
-                        BorderRadius.circular(
-                      4,
-                    ),
-                    child: Image.asset(
-                      book['image'],
-                      fit: BoxFit.cover,
-                    ),
-                  )
-                : const Icon(
-                    Icons.menu_book,
-                    color: maroon,
-                    size: 32,
-                  ),
+            child: _buildBookImage(book),
           ),
 
           const SizedBox(width: 16),
@@ -374,8 +468,10 @@ class _HistoryScreenState
                   CrossAxisAlignment.start,
               children: [
                 Text(
-                  book['title'],
-                  style: const TextStyle(
+                  book['title'] ??
+                      'Unknown title',
+                  style:
+                      const TextStyle(
                     color: Colors.white,
                     fontFamily: 'Georgia',
                     fontSize: 16,
@@ -387,33 +483,43 @@ class _HistoryScreenState
                 const SizedBox(height: 4),
 
                 Text(
-                  book['author'],
-                  style: const TextStyle(
+                  book['author'] ??
+                      'Unknown author',
+                  style:
+                      const TextStyle(
                     color: Colors.white,
                     fontFamily: 'Georgia',
                     fontSize: 12,
                   ),
                 ),
 
-                const SizedBox(height: 8),
+                if (rating > 0) ...[
+                  const SizedBox(height: 8),
 
-                Row(
-                  children: [
-                    ..._ratingStars(
-                      book['rating'],
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      '${book['rating']}',
-                      style:
-                          const TextStyle(
-                        color: Colors.white,
-                        fontFamily: 'Georgia',
-                        fontSize: 11,
+                  Row(
+                    children: [
+                      ..._ratingStars(
+                        rating,
                       ),
-                    ),
-                  ],
-                ),
+
+                      const SizedBox(width: 6),
+
+                      Text(
+                        rating
+                            .toStringAsFixed(
+                          1,
+                        ),
+                        style:
+                            const TextStyle(
+                          color: Colors.white,
+                          fontFamily:
+                              'Georgia',
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
 
                 const SizedBox(height: 8),
 
@@ -434,10 +540,71 @@ class _HistoryScreenState
     );
   }
 
+  Widget _buildBookImage(
+    Map<String, dynamic> book,
+  ) {
+    final image =
+        book['image']?.toString() ?? '';
+
+    if (image.isEmpty) {
+      return const Center(
+        child: Icon(
+          Icons.menu_book,
+          color: maroon,
+          size: 32,
+        ),
+      );
+    }
+
+    if (image.startsWith('http')) {
+      return ClipRRect(
+        borderRadius:
+            BorderRadius.circular(4),
+        child: Image.network(
+          image,
+          width: 75,
+          height: 110,
+          fit: BoxFit.cover,
+          errorBuilder:
+              (context, error, stackTrace) {
+            return const Center(
+              child: Icon(
+                Icons.menu_book,
+                color: maroon,
+                size: 32,
+              ),
+            );
+          },
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius:
+          BorderRadius.circular(4),
+      child: Image.asset(
+        image,
+        width: 75,
+        height: 110,
+        fit: BoxFit.cover,
+        errorBuilder:
+            (context, error, stackTrace) {
+          return const Center(
+            child: Icon(
+              Icons.menu_book,
+              color: maroon,
+              size: 32,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   List<Widget> _ratingStars(
     double rating,
   ) {
-    List<Widget> stars = [];
+    final List<Widget> stars = [];
 
     for (int i = 1; i <= 5; i++) {
       if (rating >= i) {

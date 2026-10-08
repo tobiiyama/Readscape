@@ -1,40 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'topbooks_screen.dart';
 import 'history_screen.dart';
 import 'search_screen.dart';
 import 'notifications_screen.dart';
 import 'sidemenu_screen.dart';
-
-// ============================================================
-// FAVORITE BOOKS
-// ============================================================
-
-final List<Map<String, dynamic>> favoriteBooks = [
-  {
-    'title': 'Fire and Blood',
-    'image': 'assets/images/fire_and_blood.jpg',
-  },
-  {
-    'title': 'A Game of Thrones',
-    'image': 'assets/images/a_game_of_thrones.jpg',
-  },
-  {
-    'title':
-        'Harry Potter and the Chamber of Secrets',
-    'image':
-        'assets/images/harry_potter_chamber_of_secrets.jpg',
-  },
-  {
-    'title': 'Mockingjay',
-    'image': 'assets/images/mockingjay.jpg',
-  },
-  {
-    'title': 'One of Us Is Lying',
-    'image':
-        'assets/images/one_of_us_is_lying.jpg',
-  },
-];
 
 class FavoritesScreen extends StatefulWidget {
   const FavoritesScreen({super.key});
@@ -51,6 +22,142 @@ class _FavoritesScreenState
 
   static const Color maroon =
       Color(0xFF7A1F2B);
+
+  final List<Map<String, dynamic>>
+      favoriteBooks = [];
+
+  bool isLoadingFavorites = true;
+
+  String activeNav = 'Favorites';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFavorites();
+  }
+
+  Future<void> _loadFavorites() async {
+    try {
+      final supabase =
+          Supabase.instance.client;
+
+      final user =
+          supabase.auth.currentUser;
+
+      if (user == null) {
+        if (!mounted) return;
+
+        setState(() {
+          isLoadingFavorites = false;
+        });
+
+        return;
+      }
+
+      final data = await supabase
+          .from('user_books')
+          .select(
+            'book_title, book_author, book_image, is_favorite',
+          )
+          .eq('user_id', user.id)
+          .eq('is_favorite', true);
+
+      if (!mounted) return;
+
+      setState(() {
+        favoriteBooks.clear();
+
+        for (final row in data) {
+          favoriteBooks.add({
+            'title':
+                row['book_title'] ??
+                    'Unknown title',
+            'author':
+                row['book_author'] ??
+                    'Unknown author',
+            'image':
+                row['book_image'],
+          });
+        }
+
+        isLoadingFavorites = false;
+      });
+    } catch (error) {
+      debugPrint(
+        'Could not load favorites: $error',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        isLoadingFavorites = false;
+      });
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not load Favorites: $error',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _removeFavorite(
+    Map<String, dynamic> book,
+  ) async {
+    try {
+      final supabase =
+          Supabase.instance.client;
+
+      final user =
+          supabase.auth.currentUser;
+
+      if (user == null) {
+        throw Exception(
+          'User not logged in.',
+        );
+      }
+
+      await supabase
+          .from('user_books')
+          .update({
+        'is_favorite': false,
+      })
+          .eq('user_id', user.id)
+          .eq(
+            'book_title',
+            book['title'],
+          );
+
+      if (!mounted) return;
+
+      setState(() {
+        favoriteBooks.remove(book);
+      });
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Removed from Favorites.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not remove favorite: $error',
+          ),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +177,8 @@ class _FavoritesScreenState
 
                     const Text(
                       'Favorites',
-                      textAlign: TextAlign.center,
+                      textAlign:
+                          TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
                         fontFamily: 'Georgia',
@@ -103,7 +211,20 @@ class _FavoritesScreenState
 
                     const SizedBox(height: 22),
 
-                    if (favoriteBooks.isEmpty)
+                    if (isLoadingFavorites)
+                      const Padding(
+                        padding:
+                            EdgeInsets.only(
+                          top: 30,
+                        ),
+                        child: Center(
+                          child:
+                              CircularProgressIndicator(
+                            color: Colors.white,
+                          ),
+                        ),
+                      )
+                    else if (favoriteBooks.isEmpty)
                       const Padding(
                         padding:
                             EdgeInsets.only(
@@ -112,7 +233,8 @@ class _FavoritesScreenState
                         child: Text(
                           'No favorite books yet.',
                           style: TextStyle(
-                            color: Colors.white,
+                            color:
+                                Colors.white,
                             fontFamily:
                                 'Georgia',
                             fontSize: 12,
@@ -169,14 +291,13 @@ class _FavoritesScreenState
   ) {
     return GestureDetector(
       onTap: () {
-        setState(() {
-          favoriteBooks.remove(book);
-        });
+        _removeFavorite(book);
       },
       child: SizedBox(
         height: 155,
         child: Stack(
-          clipBehavior: Clip.none,
+          clipBehavior:
+              Clip.none,
           children: [
             Center(
               child: Container(
@@ -188,11 +309,13 @@ class _FavoritesScreenState
                       BorderRadius.circular(
                     2,
                   ),
-                  boxShadow: const [
+                  boxShadow:
+                      const [
                     BoxShadow(
                       color: Colors.black26,
                       blurRadius: 4,
-                      offset: Offset(1, 2),
+                      offset:
+                          Offset(1, 2),
                     ),
                   ],
                 ),
@@ -201,23 +324,9 @@ class _FavoritesScreenState
                       BorderRadius.circular(
                     2,
                   ),
-                  child: Image.asset(
-                    book['image'],
-                    width: 88,
-                    height: 132,
-                    fit: BoxFit.cover,
-                    errorBuilder:
-                        (context,
-                            error,
-                            stackTrace) {
-                      return const Center(
-                        child: Icon(
-                          Icons.menu_book,
-                          color: maroon,
-                          size: 32,
-                        ),
-                      );
-                    },
+                  child:
+                      _buildBookImage(
+                    book,
                   ),
                 ),
               ),
@@ -228,7 +337,8 @@ class _FavoritesScreenState
               bottom: 2,
               child: Icon(
                 Icons.favorite,
-                color: Colors.red.shade700,
+                color:
+                    Colors.red.shade700,
                 size: 36,
               ),
             ),
@@ -238,8 +348,76 @@ class _FavoritesScreenState
     );
   }
 
+  Widget _buildBookImage(
+    Map<String, dynamic> book,
+  ) {
+    final image =
+        book['image']?.toString() ?? '';
+
+    if (image.isEmpty) {
+      return const Center(
+        child: Icon(
+          Icons.menu_book,
+          color: maroon,
+          size: 32,
+        ),
+      );
+    }
+
+    if (image.startsWith('http')) {
+      return ClipRRect(
+        borderRadius:
+            BorderRadius.circular(
+          2,
+        ),
+        child: Image.network(
+          image,
+          width: 88,
+          height: 132,
+          fit: BoxFit.cover,
+          errorBuilder:
+              (context, error,
+                  stackTrace) {
+            return const Center(
+              child: Icon(
+                Icons.menu_book,
+                color: maroon,
+                size: 32,
+              ),
+            );
+          },
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius:
+          BorderRadius.circular(
+        2,
+      ),
+      child: Image.asset(
+        image,
+        width: 88,
+        height: 132,
+        fit: BoxFit.cover,
+        errorBuilder:
+            (context, error,
+                stackTrace) {
+          return const Center(
+            child: Icon(
+              Icons.menu_book,
+              color: maroon,
+              size: 32,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildTopNavigation(
-      BuildContext context) {
+    BuildContext context,
+  ) {
     return Container(
       height: 64,
       color: cream,
@@ -248,9 +426,11 @@ class _FavoritesScreenState
           SizedBox(
             width: 48,
             child: Builder(
-              builder: (drawerContext) {
+              builder:
+                  (drawerContext) {
                 return IconButton(
-                  icon: const Icon(
+                  icon:
+                      const Icon(
                     Icons.menu,
                     color: maroon,
                   ),
@@ -267,39 +447,48 @@ class _FavoritesScreenState
           Expanded(
             child: Row(
               mainAxisAlignment:
-                  MainAxisAlignment.center,
+                  MainAxisAlignment
+                      .center,
               children: [
                 _navText(
                   'Top 10',
                   false,
                   () {
-                    Navigator.pushReplacement(
+                    Navigator
+                        .pushReplacement(
                       context,
                       MaterialPageRoute(
-                        builder: (context) =>
-                            const TopBooksScreen(),
+                        builder:
+                            (context) =>
+                                const TopBooksScreen(),
                       ),
                     );
                   },
                 ),
 
-                const SizedBox(width: 20),
+                const SizedBox(
+                  width: 20,
+                ),
 
                 _navText(
                   'History',
                   false,
                   () {
-                    Navigator.pushReplacement(
+                    Navigator
+                        .pushReplacement(
                       context,
                       MaterialPageRoute(
-                        builder: (context) =>
-                            const HistoryScreen(),
+                        builder:
+                            (context) =>
+                                const HistoryScreen(),
                       ),
                     );
                   },
                 ),
 
-                const SizedBox(width: 20),
+                const SizedBox(
+                  width: 20,
+                ),
 
                 _navText(
                   'Favorites',
@@ -314,23 +503,30 @@ class _FavoritesScreenState
             width: 114,
             child: Row(
               mainAxisAlignment:
-                  MainAxisAlignment.end,
+                  MainAxisAlignment
+                      .end,
               children: [
                 SizedBox(
                   width: 38,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(
-                      Icons.notifications_none,
+                  child:
+                      IconButton(
+                    padding:
+                        EdgeInsets.zero,
+                    icon:
+                        const Icon(
+                      Icons
+                          .notifications_none,
                       color: maroon,
                       size: 22,
                     ),
                     onPressed: () {
-                      Navigator.pushReplacement(
+                      Navigator
+                          .pushReplacement(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              const NotificationsScreen(),
+                          builder:
+                              (context) =>
+                                  const NotificationsScreen(),
                         ),
                       );
                     },
@@ -339,10 +535,14 @@ class _FavoritesScreenState
 
                 SizedBox(
                   width: 38,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(
-                      Icons.share_outlined,
+                  child:
+                      IconButton(
+                    padding:
+                        EdgeInsets.zero,
+                    icon:
+                        const Icon(
+                      Icons
+                          .share_outlined,
                       color: maroon,
                       size: 22,
                     ),
@@ -352,19 +552,24 @@ class _FavoritesScreenState
 
                 SizedBox(
                   width: 38,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(
+                  child:
+                      IconButton(
+                    padding:
+                        EdgeInsets.zero,
+                    icon:
+                        const Icon(
                       Icons.search,
                       color: maroon,
                       size: 22,
                     ),
                     onPressed: () {
-                      Navigator.push(
+                      Navigator
+                          .pushReplacement(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              const SearchScreen(),
+                          builder:
+                              (context) =>
+                                  const SearchScreen(),
                         ),
                       );
                     },
@@ -385,14 +590,18 @@ class _FavoritesScreenState
   ) {
     return TextButton(
       onPressed: onPressed,
-      style: TextButton.styleFrom(
+      style:
+          TextButton.styleFrom(
         padding:
-            const EdgeInsets.symmetric(
+            const EdgeInsets
+                .symmetric(
           horizontal: 4,
         ),
-        minimumSize: Size.zero,
+        minimumSize:
+            Size.zero,
         tapTargetSize:
-            MaterialTapTargetSize.shrinkWrap,
+            MaterialTapTargetSize
+                .shrinkWrap,
       ),
       child: Text(
         text,
