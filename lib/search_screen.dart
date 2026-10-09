@@ -20,8 +20,7 @@ class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
 
   @override
-  State<SearchScreen> createState() =>
-      _SearchScreenState();
+  State<SearchScreen> createState() => _SearchScreenState();
 }
 
 class _SearchScreenState extends State<SearchScreen> {
@@ -47,19 +46,21 @@ class _SearchScreenState extends State<SearchScreen> {
   // ============================================================
 
   Future<void> performSearch([String? value]) async {
-    final entered =
-        (value ?? searchController.text).trim();
+    final entered = (value ?? searchController.text).trim();
 
+    // Never show results for an empty query.
     if (entered.isEmpty) {
+      setState(() {
+        hasSearched = false;
+        isSearching = false;
+        searchResults.clear();
+      });
       return;
     }
 
     searchHistory.removeWhere(
-      (item) =>
-          item.toLowerCase() ==
-          entered.toLowerCase(),
+      (item) => item.toLowerCase() == entered.toLowerCase(),
     );
-
     searchHistory.insert(0, entered);
 
     setState(() {
@@ -76,9 +77,7 @@ class _SearchScreenState extends State<SearchScreen> {
           'q': entered,
           'limit': '20',
           'fields':
-              'title,author_name,cover_i,'
-              'key,first_publish_year,'
-              'ratings_average',
+              'title,author_name,cover_i,key,first_publish_year,ratings_average',
         },
       );
 
@@ -90,62 +89,42 @@ class _SearchScreenState extends State<SearchScreen> {
       );
 
       if (response.statusCode != 200) {
-        throw Exception(
-          'Search request failed.',
-        );
+        throw Exception('Search request failed.');
       }
 
-      final data =
-          jsonDecode(response.body)
-              as Map<String, dynamic>;
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final docs = data['docs'] as List<dynamic>? ?? [];
 
-      final docs =
-          data['docs'] as List<dynamic>? ?? [];
-
-      final List<Map<String, dynamic>>
-          loadedResults = [];
+      final List<Map<String, dynamic>> loadedResults = [];
 
       for (final item in docs) {
-        final book =
-            item as Map<String, dynamic>;
+        final book = item as Map<String, dynamic>;
+        final title = book['title']?.toString();
 
-        final title =
-            book['title']?.toString();
-
-        if (title == null ||
-            title.trim().isEmpty) {
+        if (title == null || title.trim().isEmpty) {
           continue;
         }
 
         String author = 'Unknown author';
+        final authors = book['author_name'];
 
-        final authors =
-            book['author_name'];
-
-        if (authors is List &&
-            authors.isNotEmpty) {
+        if (authors is List && authors.isNotEmpty) {
           author = authors.first.toString();
         }
 
         String? image;
-
-        final coverId =
-            book['cover_i'];
+        final coverId = book['cover_i'];
 
         if (coverId != null) {
           image =
-              'https://covers.openlibrary.org/b/id/'
-              '$coverId-L.jpg';
+              'https://covers.openlibrary.org/b/id/$coverId-L.jpg';
         }
 
         double? rating;
-
-        final ratingsAverage =
-            book['ratings_average'];
+        final ratingsAverage = book['ratings_average'];
 
         if (ratingsAverage is num) {
-          rating =
-              ratingsAverage.toDouble();
+          rating = ratingsAverage.toDouble();
         }
 
         loadedResults.add({
@@ -163,9 +142,7 @@ class _SearchScreenState extends State<SearchScreen> {
         isSearching = false;
       });
     } catch (error) {
-      debugPrint(
-        'Could not search books: $error',
-      );
+      debugPrint('Could not search books: $error');
 
       if (!mounted) return;
 
@@ -176,9 +153,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Could not search books: $error',
-          ),
+          content: Text('Could not search books: $error'),
         ),
       );
     }
@@ -191,7 +166,8 @@ class _SearchScreenState extends State<SearchScreen> {
   void returnToSearch() {
     setState(() {
       hasSearched = false;
-      searchResults = [];
+      isSearching = false;
+      searchResults.clear();
       searchController.clear();
     });
   }
@@ -226,16 +202,11 @@ class _SearchScreenState extends State<SearchScreen> {
     required String? image,
   }) async {
     try {
-      final supabase =
-          Supabase.instance.client;
-
-      final user =
-          supabase.auth.currentUser;
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
 
       if (user == null) {
-        throw Exception(
-          'User not logged in.',
-        );
+        throw Exception('User not logged in.');
       }
 
       final existing = await supabase
@@ -248,10 +219,7 @@ class _SearchScreenState extends State<SearchScreen> {
       final bookData = {
         'book_author': author,
         'book_image': image,
-        'last_read_at':
-            DateTime.now()
-                .toUtc()
-                .toIso8601String(),
+        'last_read_at': DateTime.now().toUtc().toIso8601String(),
       };
 
       if (existing != null) {
@@ -260,18 +228,23 @@ class _SearchScreenState extends State<SearchScreen> {
             .update(bookData)
             .eq('id', existing['id']);
       } else {
-        await supabase
-            .from('user_books')
-            .insert({
+        await supabase.from('user_books').insert({
           'user_id': user.id,
           'book_title': title,
           ...bookData,
         });
       }
+
+      await supabase.from('notifications').insert({
+        'user_id': user.id,
+        'type': 'history',
+        'title': 'Reading History Updated',
+        'message':
+            'You viewed "$title". It was added to your reading history.',
+        'book_title': title,
+      });
     } catch (error) {
-      debugPrint(
-        'Could not save reading history: $error',
-      );
+      debugPrint('Could not save reading history: $error');
     }
   }
 
@@ -286,16 +259,11 @@ class _SearchScreenState extends State<SearchScreen> {
     required String status,
   }) async {
     try {
-      final supabase =
-          Supabase.instance.client;
-
-      final user =
-          supabase.auth.currentUser;
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
 
       if (user == null) {
-        throw Exception(
-          'User not logged in.',
-        );
+        throw Exception('User not logged in.');
       }
 
       final existing = await supabase
@@ -317,50 +285,43 @@ class _SearchScreenState extends State<SearchScreen> {
             .update(bookData)
             .eq('id', existing['id']);
       } else {
-        await supabase
-            .from('user_books')
-            .insert({
+        await supabase.from('user_books').insert({
           'user_id': user.id,
           'book_title': title,
           ...bookData,
         });
       }
 
+      await supabase.from('notifications').insert({
+        'user_id': user.id,
+        'type': 'collection',
+        'title': 'Added to Collection',
+        'message': 'You added "$title" to your collection.',
+        'book_title': title,
+      });
+
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _collectionStatusText(status),
-          ),
-        ),
+        SnackBar(content: Text(_collectionStatusText(status))),
       );
     } catch (error) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not save the book: $error',
-          ),
-        ),
+        SnackBar(content: Text('Could not save the book: $error')),
       );
     }
   }
 
-  String _collectionStatusText(
-    String status,
-  ) {
+  String _collectionStatusText(String status) {
     switch (status) {
       case 'want_to_read':
         return 'Added to Want to Read.';
-
       case 'reading':
         return 'Added to Reading.';
-
       case 'already_read':
         return 'Added to Already Read.';
-
       default:
         return 'Book saved.';
     }
@@ -376,16 +337,11 @@ class _SearchScreenState extends State<SearchScreen> {
     required String? image,
   }) async {
     try {
-      final supabase =
-          Supabase.instance.client;
-
-      final user =
-          supabase.auth.currentUser;
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
 
       if (user == null) {
-        throw Exception(
-          'User not logged in.',
-        );
+        throw Exception('User not logged in.');
       }
 
       final existing = await supabase
@@ -395,67 +351,59 @@ class _SearchScreenState extends State<SearchScreen> {
           .eq('book_title', title)
           .maybeSingle();
 
+      bool isNowFavorite;
+
       if (existing != null) {
-        final currentlyFavorite =
-            existing['is_favorite'] == true;
+        isNowFavorite = existing['is_favorite'] != true;
 
         await supabase
             .from('user_books')
             .update({
-          'book_author': author,
-          'book_image': image,
-          'is_favorite':
-              !currentlyFavorite,
-        })
-            .eq(
-              'id',
-              existing['id'],
-            );
-
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context)
-            .showSnackBar(
-          SnackBar(
-            content: Text(
-              currentlyFavorite
-                  ? 'Removed from Favorites.'
-                  : 'Added to Favorites.',
-            ),
-          ),
-        );
+              'book_author': author,
+              'book_image': image,
+              'is_favorite': isNowFavorite,
+            })
+            .eq('id', existing['id']);
       } else {
-        await supabase
-            .from('user_books')
-            .insert({
+        isNowFavorite = true;
+
+        await supabase.from('user_books').insert({
           'user_id': user.id,
           'book_title': title,
           'book_author': author,
           'book_image': image,
           'is_favorite': true,
         });
-
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context)
-            .showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Added to Favorites.',
-            ),
-          ),
-        );
       }
+
+      await supabase.from('notifications').insert({
+        'user_id': user.id,
+        'type': 'favorite',
+        'title': isNowFavorite
+            ? 'Added to Favorites'
+            : 'Removed from Favorites',
+        'message': isNowFavorite
+            ? 'You added "$title" to your Favorites.'
+            : 'You removed "$title" from your Favorites.',
+        'book_title': title,
+      });
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isNowFavorite
+                ? 'Added to Favorites.'
+                : 'Removed from Favorites.',
+          ),
+        ),
+      );
     } catch (error) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not update Favorites: $error',
-          ),
-        ),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update Favorites: $error')),
       );
     }
   }
@@ -478,54 +426,39 @@ class _SearchScreenState extends State<SearchScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: cream,
-      shape:
-          const RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.vertical(
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
           top: Radius.circular(18),
         ),
       ),
       builder: (sheetContext) {
         return SafeArea(
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(
-              vertical: 14,
-            ),
+            padding: const EdgeInsets.symmetric(vertical: 14),
             child: Column(
-              mainAxisSize:
-                  MainAxisSize.min,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   book['title'].toString(),
-                  textAlign:
-                      TextAlign.center,
-                  style:
-                      const TextStyle(
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
                     color: maroon,
                     fontFamily: 'Georgia',
                     fontSize: 16,
-                    fontWeight:
-                        FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-
                 const SizedBox(height: 4),
-
                 Text(
                   book['author'].toString(),
-                  textAlign:
-                      TextAlign.center,
-                  style:
-                      const TextStyle(
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
                     color: maroon,
                     fontFamily: 'Georgia',
                     fontSize: 12,
                   ),
                 ),
-
                 const SizedBox(height: 12),
-
                 ListTile(
                   leading: const Icon(
                     Icons.bookmark_border,
@@ -539,31 +472,17 @@ class _SearchScreenState extends State<SearchScreen> {
                     ),
                   ),
                   onTap: () async {
-                    Navigator.pop(
-                      sheetContext,
-                    );
-
+                    Navigator.pop(sheetContext);
                     await _saveCollectionStatus(
-                      title:
-                          book['title']
-                              .toString(),
-                      author:
-                          book['author']
-                              .toString(),
-                      image:
-                          book['image']
-                              ?.toString(),
-                      status:
-                          'want_to_read',
+                      title: book['title'].toString(),
+                      author: book['author'].toString(),
+                      image: book['image']?.toString(),
+                      status: 'want_to_read',
                     );
                   },
                 ),
-
                 ListTile(
-                  leading: const Icon(
-                    Icons.menu_book,
-                    color: maroon,
-                  ),
+                  leading: const Icon(Icons.menu_book, color: maroon),
                   title: const Text(
                     'Reading',
                     style: TextStyle(
@@ -572,25 +491,15 @@ class _SearchScreenState extends State<SearchScreen> {
                     ),
                   ),
                   onTap: () async {
-                    Navigator.pop(
-                      sheetContext,
-                    );
-
+                    Navigator.pop(sheetContext);
                     await _saveCollectionStatus(
-                      title:
-                          book['title']
-                              .toString(),
-                      author:
-                          book['author']
-                              .toString(),
-                      image:
-                          book['image']
-                              ?.toString(),
+                      title: book['title'].toString(),
+                      author: book['author'].toString(),
+                      image: book['image']?.toString(),
                       status: 'reading',
                     );
                   },
                 ),
-
                 ListTile(
                   leading: const Icon(
                     Icons.check_circle_outline,
@@ -604,26 +513,15 @@ class _SearchScreenState extends State<SearchScreen> {
                     ),
                   ),
                   onTap: () async {
-                    Navigator.pop(
-                      sheetContext,
-                    );
-
+                    Navigator.pop(sheetContext);
                     await _saveCollectionStatus(
-                      title:
-                          book['title']
-                              .toString(),
-                      author:
-                          book['author']
-                              .toString(),
-                      image:
-                          book['image']
-                              ?.toString(),
-                      status:
-                          'already_read',
+                      title: book['title'].toString(),
+                      author: book['author'].toString(),
+                      image: book['image']?.toString(),
+                      status: 'already_read',
                     );
                   },
                 ),
-
                 ListTile(
                   leading: const Icon(
                     Icons.favorite_border,
@@ -637,20 +535,11 @@ class _SearchScreenState extends State<SearchScreen> {
                     ),
                   ),
                   onTap: () async {
-                    Navigator.pop(
-                      sheetContext,
-                    );
-
+                    Navigator.pop(sheetContext);
                     await _toggleFavorite(
-                      title:
-                          book['title']
-                              .toString(),
-                      author:
-                          book['author']
-                              .toString(),
-                      image:
-                          book['image']
-                              ?.toString(),
+                      title: book['title'].toString(),
+                      author: book['author'].toString(),
+                      image: book['image']?.toString(),
                     );
                   },
                 ),
@@ -670,8 +559,7 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: !hasSearched,
-      onPopInvokedWithResult:
-          (didPop, result) {
+      onPopInvokedWithResult: (didPop, result) {
         if (!didPop && hasSearched) {
           returnToSearch();
         }
@@ -683,84 +571,50 @@ class _SearchScreenState extends State<SearchScreen> {
           child: Column(
             children: [
               _buildTopNavigation(context),
-
               Expanded(
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
                       const SizedBox(height: 28),
-
-                      // SEARCH BAR
                       Padding(
-                        padding:
-                            const EdgeInsets
-                                .symmetric(
-                          horizontal: 32,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
                         child: SizedBox(
                           height: 40,
                           child: TextField(
-                            controller:
-                                searchController,
-                            onSubmitted:
-                                performSearch,
-                            textInputAction:
-                                TextInputAction
-                                    .search,
-                            style:
-                                const TextStyle(
+                            controller: searchController,
+                            onSubmitted: performSearch,
+                            textInputAction: TextInputAction.search,
+                            style: const TextStyle(
                               color: Colors.white,
                               fontFamily: 'Georgia',
                               fontSize: 12,
                             ),
-                            decoration:
-                                InputDecoration(
-                              hintText:
-                                  'Search',
-                              hintStyle:
-                                  const TextStyle(
+                            decoration: InputDecoration(
+                              hintText: 'Search',
+                              hintStyle: const TextStyle(
                                 color: Colors.white,
-                                fontFamily:
-                                    'Georgia',
+                                fontFamily: 'Georgia',
                                 fontSize: 12,
                               ),
-                              prefixIcon:
-                                  const Icon(
+                              prefixIcon: const Icon(
                                 Icons.search,
-                                color:
-                                    Colors.white,
+                                color: Colors.white,
                                 size: 19,
                               ),
-                              contentPadding:
-                                  const EdgeInsets
-                                      .symmetric(
+                              contentPadding: const EdgeInsets.symmetric(
                                 vertical: 0,
                               ),
-                              enabledBorder:
-                                  OutlineInputBorder(
-                                borderRadius:
-                                    BorderRadius
-                                        .circular(
-                                  20,
-                                ),
-                                borderSide:
-                                    const BorderSide(
-                                  color:
-                                      Colors.white,
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                borderSide: const BorderSide(
+                                  color: Colors.white,
                                   width: 1.5,
                                 ),
                               ),
-                              focusedBorder:
-                                  OutlineInputBorder(
-                                borderRadius:
-                                    BorderRadius
-                                        .circular(
-                                  20,
-                                ),
-                                borderSide:
-                                    const BorderSide(
-                                  color:
-                                      Colors.white,
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                borderSide: const BorderSide(
+                                  color: Colors.white,
                                   width: 1.5,
                                 ),
                               ),
@@ -768,14 +622,13 @@ class _SearchScreenState extends State<SearchScreen> {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 14),
 
-                      if (!hasSearched)
-                        _buildSearchHistory(),
+                      // Initial screen shows history only, never book results.
+                      if (!hasSearched) _buildSearchHistory(),
 
-                      if (hasSearched)
-                        _buildSearchResults(),
+                      // Results are shown only after a nonempty search.
+                      if (hasSearched) _buildSearchResults(),
 
                       const SizedBox(height: 20),
                     ],
@@ -809,75 +662,51 @@ class _SearchScreenState extends State<SearchScreen> {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 52,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 52),
       child: Column(
         children: [
-          ...searchHistory.map(
-            (item) {
-              return Padding(
-                padding:
-                    const EdgeInsets.symmetric(
-                  vertical: 5,
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.history,
-                      color: Colors.white,
-                      size: 18,
-                    ),
-
-                    const SizedBox(width: 7),
-
-                    Expanded(
-                      child:
-                          GestureDetector(
-                        onTap: () {
-                          searchController
-                              .text = item;
-
-                          performSearch(item);
-                        },
-                        child: Text(
-                          item,
-                          maxLines: 1,
-                          overflow:
-                              TextOverflow
-                                  .ellipsis,
-                          style:
-                              const TextStyle(
-                            color: Colors.white,
-                            fontFamily:
-                                'Georgia',
-                            fontSize: 10,
-                          ),
+          ...searchHistory.map((item) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.history,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        searchController.text = item;
+                        performSearch(item);
+                      },
+                      child: Text(
+                        item,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontFamily: 'Georgia',
+                          fontSize: 10,
                         ),
                       ),
                     ),
-
-                    GestureDetector(
-                      onTap: () {
-                        removeHistoryItem(
-                          item,
-                        );
-                      },
-                      child:
-                          const Icon(
-                        Icons.close,
-                        color: Colors.white,
-                        size: 18,
-                      ),
+                  ),
+                  GestureDetector(
+                    onTap: () => removeHistoryItem(item),
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 18,
                     ),
-                  ],
-                ),
-              );
-            },
-          ),
-
+                  ),
+                ],
+              ),
+            );
+          }),
           const SizedBox(height: 15),
-
           GestureDetector(
             onTap: clearHistory,
             child: const Text(
@@ -886,8 +715,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 color: Colors.white,
                 fontFamily: 'Georgia',
                 fontSize: 10,
-                decoration:
-                    TextDecoration.underline,
+                decoration: TextDecoration.underline,
               ),
             ),
           ),
@@ -905,9 +733,7 @@ class _SearchScreenState extends State<SearchScreen> {
       return const Padding(
         padding: EdgeInsets.only(top: 30),
         child: Center(
-          child: CircularProgressIndicator(
-            color: Colors.white,
-          ),
+          child: CircularProgressIndicator(color: Colors.white),
         ),
       );
     }
@@ -927,15 +753,9 @@ class _SearchScreenState extends State<SearchScreen> {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 32,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 32),
       child: Column(
-        children: searchResults
-            .map(
-              (book) => _bookCard(book),
-            )
-            .toList(),
+        children: searchResults.map(_bookCard).toList(),
       ),
     );
   }
@@ -944,25 +764,17 @@ class _SearchScreenState extends State<SearchScreen> {
   // BOOK CARD
   // ============================================================
 
-  Widget _bookCard(
-    Map<String, dynamic> book,
-  ) {
-    final image =
-        book['image']?.toString() ?? '';
+  Widget _bookCard(Map<String, dynamic> book) {
+    final image = book['image']?.toString() ?? '';
 
     return GestureDetector(
-      onTap: () {
-        _showBookOptions(book);
-      },
+      onTap: () => _showBookOptions(book),
       child: Container(
-        margin: const EdgeInsets.only(
-          bottom: 12,
-        ),
+        margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: cream,
-          borderRadius:
-              BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           children: [
@@ -970,66 +782,49 @@ class _SearchScreenState extends State<SearchScreen> {
               width: 48,
               height: 70,
               decoration: BoxDecoration(
-                borderRadius:
-                    BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(2),
                 color: Colors.white,
               ),
-              child: _buildBookImage(
-                image,
-              ),
+              child: _buildBookImage(image),
             ),
-
             const SizedBox(width: 12),
-
             Expanded(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     book['title'].toString(),
                     maxLines: 2,
-                    overflow:
-                        TextOverflow.ellipsis,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: maroon,
                       fontFamily: 'Georgia',
                       fontSize: 13,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-
                   const SizedBox(height: 4),
-
                   Text(
                     book['author'].toString(),
                     maxLines: 1,
-                    overflow:
-                        TextOverflow.ellipsis,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: maroon,
                       fontFamily: 'Georgia',
                       fontSize: 11,
                     ),
                   ),
-
                   const SizedBox(height: 5),
-
                   if (book['rating'] != null)
                     Text(
-                      'Rating: '
-                      '${(book['rating'] as num).toStringAsFixed(1)}',
+                      'Rating: ${(book['rating'] as num).toStringAsFixed(1)}',
                       style: const TextStyle(
                         color: maroon,
-                        fontFamily:
-                            'Georgia',
+                        fontFamily: 'Georgia',
                         fontSize: 9,
                       ),
                     ),
-
                   const SizedBox(height: 3),
-
                   const Text(
                     'Tap for options',
                     style: TextStyle(
@@ -1051,36 +846,24 @@ class _SearchScreenState extends State<SearchScreen> {
   // BOOK IMAGE
   // ============================================================
 
-  Widget _buildBookImage(
-    String image,
-  ) {
+  Widget _buildBookImage(String image) {
     if (image.isEmpty) {
       return const Center(
-        child: Icon(
-          Icons.menu_book,
-          color: maroon,
-          size: 28,
-        ),
+        child: Icon(Icons.menu_book, color: maroon, size: 28),
       );
     }
 
     if (image.startsWith('http')) {
       return ClipRRect(
-        borderRadius:
-            BorderRadius.circular(2),
+        borderRadius: BorderRadius.circular(2),
         child: Image.network(
           image,
           width: 48,
           height: 70,
           fit: BoxFit.cover,
-          errorBuilder:
-              (context, error, stackTrace) {
+          errorBuilder: (context, error, stackTrace) {
             return const Center(
-              child: Icon(
-                Icons.menu_book,
-                color: maroon,
-                size: 28,
-              ),
+              child: Icon(Icons.menu_book, color: maroon, size: 28),
             );
           },
         ),
@@ -1088,21 +871,15 @@ class _SearchScreenState extends State<SearchScreen> {
     }
 
     return ClipRRect(
-      borderRadius:
-          BorderRadius.circular(2),
+      borderRadius: BorderRadius.circular(2),
       child: Image.asset(
         image,
         width: 48,
         height: 70,
         fit: BoxFit.cover,
-        errorBuilder:
-            (context, error, stackTrace) {
+        errorBuilder: (context, error, stackTrace) {
           return const Center(
-            child: Icon(
-              Icons.menu_book,
-              color: maroon,
-              size: 28,
-            ),
+            child: Icon(Icons.menu_book, color: maroon, size: 28),
           );
         },
       ),
@@ -1113,9 +890,7 @@ class _SearchScreenState extends State<SearchScreen> {
   // TOP NAVIGATION
   // ============================================================
 
-  Widget _buildTopNavigation(
-    BuildContext context,
-  ) {
+  Widget _buildTopNavigation(BuildContext context) {
     return Container(
       height: 64,
       color: cream,
@@ -1126,79 +901,51 @@ class _SearchScreenState extends State<SearchScreen> {
             child: Builder(
               builder: (drawerContext) {
                 return IconButton(
-                  icon: const Icon(
-                    Icons.menu,
-                    color: maroon,
-                  ),
+                  icon: const Icon(Icons.menu, color: maroon),
                   onPressed: () {
-                    Scaffold.of(
-                      drawerContext,
-                    ).openDrawer();
+                    Scaffold.of(drawerContext).openDrawer();
                   },
                 );
               },
             ),
           ),
-
           Expanded(
             child: Row(
-              mainAxisAlignment:
-                  MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _navText(
-                  'Top 10',
-                  false,
-                  () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            const TopBooksScreen(),
-                      ),
-                    );
-                  },
-                ),
-
+                _navText('Top 10', false, () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const TopBooksScreen(),
+                    ),
+                  );
+                }),
                 const SizedBox(width: 20),
-
-                _navText(
-                  'History',
-                  false,
-                  () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            const HistoryScreen(),
-                      ),
-                    );
-                  },
-                ),
-
+                _navText('History', false, () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const HistoryScreen(),
+                    ),
+                  );
+                }),
                 const SizedBox(width: 20),
-
-                _navText(
-                  'Favorites',
-                  false,
-                  () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            const FavoritesScreen(),
-                      ),
-                    );
-                  },
-                ),
+                _navText('Favorites', false, () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const FavoritesScreen(),
+                    ),
+                  );
+                }),
               ],
             ),
           ),
-
           SizedBox(
             width: 114,
             child: Row(
-              mainAxisAlignment:
-                  MainAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 SizedBox(
                   width: 38,
@@ -1213,14 +960,12 @@ class _SearchScreenState extends State<SearchScreen> {
                       Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              const NotificationsScreen(),
+                          builder: (context) => const NotificationsScreen(),
                         ),
                       );
                     },
                   ),
                 ),
-
                 SizedBox(
                   width: 38,
                   child: IconButton(
@@ -1233,17 +978,12 @@ class _SearchScreenState extends State<SearchScreen> {
                     onPressed: () {},
                   ),
                 ),
-
                 SizedBox(
                   width: 38,
                   child: IconButton(
                     padding: EdgeInsets.zero,
-                    icon: const Icon(
-                      Icons.search,
-                      color: maroon,
-                      size: 22,
-                    ),
-                    onPressed: () {},
+                    icon: const Icon(Icons.search, color: maroon, size: 22),
+                    onPressed: returnToSearch,
                   ),
                 ),
               ],
@@ -1266,13 +1006,9 @@ class _SearchScreenState extends State<SearchScreen> {
     return TextButton(
       onPressed: onPressed,
       style: TextButton.styleFrom(
-        padding:
-            const EdgeInsets.symmetric(
-          horizontal: 4,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
         minimumSize: Size.zero,
-        tapTargetSize:
-            MaterialTapTargetSize.shrinkWrap,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       child: Text(
         text,
@@ -1280,10 +1016,7 @@ class _SearchScreenState extends State<SearchScreen> {
           color: maroon,
           fontFamily: 'Georgia',
           fontSize: 14,
-          fontWeight:
-              isActive
-                  ? FontWeight.bold
-                  : FontWeight.normal,
+          fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
         ),
       ),
     );

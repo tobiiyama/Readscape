@@ -7,8 +7,7 @@ import 'favorites_screen.dart';
 import 'search_screen.dart';
 import 'sidemenu_screen.dart';
 
-class NotificationsScreen
-    extends StatefulWidget {
+class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
 
   @override
@@ -16,24 +15,14 @@ class NotificationsScreen
       _NotificationsScreenState();
 }
 
-class _NotificationsScreenState
-    extends State<NotificationsScreen> {
-  static const Color cream =
-      Color(0xFFF9E8A2);
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  static const Color cream = Color(0xFFF9E8A2);
+  static const Color maroon = Color(0xFF7A1F2B);
 
-  static const Color maroon =
-      Color(0xFF7A1F2B);
-
-  final List<Map<String, dynamic>>
-      notifications = [];
+  final List<Map<String, dynamic>> notifications = [];
 
   bool isLoadingNotifications = true;
-
   String activeNav = '';
-
-  // ============================================================
-  // LOAD NOTIFICATIONS
-  // ============================================================
 
   @override
   void initState() {
@@ -41,6 +30,7 @@ class _NotificationsScreenState
     _loadNotifications();
   }
 
+  // LOAD NOTIFICATIONS FROM SUPABASE
   Future<void> _loadNotifications() async {
     try {
       final supabase = Supabase.instance.client;
@@ -52,172 +42,61 @@ class _NotificationsScreenState
         setState(() {
           isLoadingNotifications = false;
         });
-
         return;
       }
 
       final data = await supabase
-          .from('user_books')
-          .select(
-            'book_title, rating, collection_status, is_favorite, last_read_at, created_at',
-          )
+          .from('notifications')
+          .select('id, type, title, message, created_at, is_read')
           .eq('user_id', user.id)
-          .order(
-            'created_at',
-            ascending: false,
-          );
+          .order('created_at', ascending: false);
+
+      final List<Map<String, dynamic>> loadedNotifications =
+          data.map<Map<String, dynamic>>((row) {
+        final type = row['type']?.toString();
+        final createdAt = row['created_at'];
+
+        IconData icon;
+
+        switch (type) {
+          case 'favorite':
+            icon = Icons.favorite;
+            break;
+          case 'rating':
+            icon = Icons.star;
+            break;
+          case 'history':
+            icon = Icons.menu_book;
+            break;
+          case 'collection':
+            icon = Icons.collections_bookmark;
+            break;
+          default:
+            icon = Icons.notifications;
+        }
+
+        return {
+          'id': row['id'],
+          'icon': icon,
+          'title': row['title']?.toString() ?? 'Notification',
+          'message': row['message']?.toString() ?? '',
+          'time': _formatRelativeTime(createdAt),
+          'date': _parseDate(createdAt),
+          'is_read': row['is_read'] == true,
+        };
+      }).toList();
 
       if (!mounted) return;
-
-      final List<Map<String, dynamic>>
-          loadedNotifications = [];
-
-      for (final row in data) {
-        final title =
-            row['book_title']?.toString() ??
-                'Unknown book';
-
-        final rating = row['rating'];
-
-        final collectionStatus =
-            row['collection_status']
-                ?.toString();
-
-        final isFavorite =
-            row['is_favorite'] == true;
-
-        final lastReadAt =
-            row['last_read_at'];
-
-        final createdAt =
-            row['created_at'];
-
-        // --------------------------------------------------------
-        // FAVORITE NOTIFICATION
-        // --------------------------------------------------------
-
-        if (isFavorite) {
-          loadedNotifications.add({
-            'icon': Icons.favorite,
-            'title': 'Added to Favorites',
-            'message':
-                '$title was added to your favorites.',
-            'time': _formatRelativeTime(
-              createdAt,
-            ),
-            'date': _parseDate(createdAt),
-          });
-        }
-
-        // --------------------------------------------------------
-        // COLLECTION NOTIFICATION
-        // --------------------------------------------------------
-
-        if (collectionStatus != null) {
-          String collectionText;
-
-          switch (collectionStatus) {
-            case 'want_to_read':
-              collectionText =
-                  'Want to Read';
-              break;
-
-            case 'reading':
-              collectionText =
-                  'Reading';
-              break;
-
-            case 'already_read':
-              collectionText =
-                  'Already Read';
-              break;
-
-            default:
-              collectionText =
-                  'Collection';
-          }
-
-          loadedNotifications.add({
-            'icon':
-                Icons.collections_bookmark,
-            'title':
-                'Added to Collection',
-            'message':
-                '$title was added to your $collectionText list.',
-            'time': _formatRelativeTime(
-              createdAt,
-            ),
-            'date': _parseDate(createdAt),
-          });
-        }
-
-        // --------------------------------------------------------
-        // RATING NOTIFICATION
-        // --------------------------------------------------------
-
-        if (rating != null) {
-          final ratingValue =
-              (rating as num).toDouble();
-
-          loadedNotifications.add({
-            'icon': Icons.star,
-            'title': 'Book Rated',
-            'message':
-                'You rated $title ${ratingValue.toStringAsFixed(1)}.',
-            'time': _formatRelativeTime(
-              createdAt,
-            ),
-            'date': _parseDate(createdAt),
-          });
-        }
-
-        // --------------------------------------------------------
-        // READING HISTORY NOTIFICATION
-        // --------------------------------------------------------
-
-        if (lastReadAt != null) {
-          loadedNotifications.add({
-            'icon': Icons.menu_book,
-            'title': 'Reading History',
-            'message':
-                'You opened $title.',
-            'time': _formatRelativeTime(
-              lastReadAt,
-            ),
-            'date': _parseDate(lastReadAt),
-          });
-        }
-      }
-
-      // ----------------------------------------------------------
-      // SORT NEWEST FIRST
-      // ----------------------------------------------------------
-
-      loadedNotifications.sort(
-        (a, b) {
-          final DateTime dateA =
-              a['date'] as DateTime;
-
-          final DateTime dateB =
-              b['date'] as DateTime;
-
-          return dateB.compareTo(dateA);
-        },
-      );
 
       setState(() {
         notifications
           ..clear()
-          ..addAll(
-            loadedNotifications,
-          );
+          ..addAll(loadedNotifications);
 
         isLoadingNotifications = false;
       });
     } catch (error) {
-      debugPrint(
-        'Could not load notifications: $error',
-      );
+      debugPrint('Could not load notifications: $error');
 
       if (!mounted) return;
 
@@ -225,48 +104,71 @@ class _NotificationsScreenState
         isLoadingNotifications = false;
       });
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Could not load notifications: $error',
-          ),
+          content: Text('Could not load notifications: $error'),
         ),
       );
     }
   }
 
-  // ============================================================
-  // PARSE DATE
-  // ============================================================
-
-  DateTime _parseDate(
-    dynamic value,
-  ) {
-    if (value == null) {
-      return DateTime.fromMillisecondsSinceEpoch(
-        0,
-      );
-    }
+  // MARK NOTIFICATION AS READ
+  Future<void> _markAsRead(
+    Map<String, dynamic> notification,
+  ) async {
+    if (notification['is_read'] == true) return;
 
     try {
-      return DateTime.parse(
-        value.toString(),
-      ).toLocal();
-    } catch (_) {
-      return DateTime.fromMillisecondsSinceEpoch(
-        0,
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+
+      if (user == null) {
+        throw Exception('User not logged in.');
+      }
+
+      await supabase
+          .from('notifications')
+          .update({'is_read': true})
+          .eq('id', notification['id'])
+          .eq('user_id', user.id);
+
+      if (!mounted) return;
+
+      setState(() {
+        notification['is_read'] = true;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Notification marked as read.'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not mark notification as read: $error'),
+        ),
       );
     }
   }
 
-  // ============================================================
-  // FORMAT RELATIVE TIME
-  // ============================================================
+  // PARSE DATE
+  DateTime _parseDate(dynamic value) {
+    if (value == null) {
+      return DateTime.fromMillisecondsSinceEpoch(0);
+    }
 
-  String _formatRelativeTime(
-    dynamic value,
-  ) {
+    try {
+      return DateTime.parse(value.toString()).toLocal();
+    } catch (_) {
+      return DateTime.fromMillisecondsSinceEpoch(0);
+    }
+  }
+
+  // FORMAT RELATIVE TIME
+  String _formatRelativeTime(dynamic value) {
     final date = _parseDate(value);
 
     if (date.millisecondsSinceEpoch == 0) {
@@ -274,51 +176,32 @@ class _NotificationsScreenState
     }
 
     final now = DateTime.now();
-
-    final difference =
-        now.difference(date);
+    final difference = now.difference(date);
 
     if (difference.inMinutes < 1) {
       return 'Just now';
     }
 
     if (difference.inMinutes < 60) {
-      final minutes =
-          difference.inMinutes;
-
-      return minutes == 1
-          ? '1 minute ago'
-          : '$minutes minutes ago';
+      final minutes = difference.inMinutes;
+      return minutes == 1 ? '1 minute ago' : '$minutes minutes ago';
     }
 
     if (difference.inHours < 24) {
-      final hours =
-          difference.inHours;
-
-      return hours == 1
-          ? '1 hour ago'
-          : '$hours hours ago';
+      final hours = difference.inHours;
+      return hours == 1 ? '1 hour ago' : '$hours hours ago';
     }
 
     if (difference.inDays < 7) {
-      final days =
-          difference.inDays;
-
-      return days == 1
-          ? 'Yesterday'
-          : '$days days ago';
+      final days = difference.inDays;
+      return days == 1 ? 'Yesterday' : '$days days ago';
     }
 
     return _formatDate(date);
   }
 
-  // ============================================================
   // FORMAT DATE
-  // ============================================================
-
-  String _formatDate(
-    DateTime date,
-  ) {
+  String _formatDate(DateTime date) {
     const months = [
       'January',
       'February',
@@ -334,17 +217,16 @@ class _NotificationsScreenState
       'December',
     ];
 
-    return '${months[date.month - 1]} '
-        '${date.day}, '
-        '${date.year}';
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 
-  // ============================================================
-  // BUILD
-  // ============================================================
-
+  // BUILD SCREEN
   @override
   Widget build(BuildContext context) {
+    final unreadCount = notifications
+        .where((notification) => notification['is_read'] != true)
+        .length;
+
     return Scaffold(
       backgroundColor: maroon,
       drawer: const SideMenu(),
@@ -352,7 +234,6 @@ class _NotificationsScreenState
         child: Column(
           children: [
             _buildTopNavigation(context),
-
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.only(
@@ -361,74 +242,73 @@ class _NotificationsScreenState
                 ),
                 children: [
                   const Padding(
-                    padding:
-                        EdgeInsets.symmetric(
-                      horizontal: 16,
-                    ),
+                    padding: EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
                       'Notifications',
-                      textAlign:
-                          TextAlign.center,
+                      textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
                         fontFamily: 'Georgia',
                         fontSize: 24,
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 8),
-
                   const Padding(
-                    padding:
-                        EdgeInsets.symmetric(
-                      horizontal: 16,
-                    ),
+                    padding: EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
                       'Stay updated on your reading journey and favorite books.',
-                      textAlign:
-                          TextAlign.center,
+                      textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
                         fontFamily: 'Georgia',
                         fontSize: 12,
-                        fontStyle:
-                            FontStyle.italic,
+                        fontStyle: FontStyle.italic,
                       ),
                     ),
                   ),
+                  const SizedBox(height: 12),
 
-                  const SizedBox(height: 24),
+                  if (!isLoadingNotifications &&
+                      notifications.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        unreadCount == 0
+                            ? 'You are all caught up!'
+                            : '$unreadCount unread '
+                                '${unreadCount == 1 ? 'notification' : 'notifications'}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: cream,
+                          fontFamily: 'Georgia',
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+
+                  const SizedBox(height: 16),
 
                   if (isLoadingNotifications)
                     const Padding(
-                      padding:
-                          EdgeInsets.only(
-                        top: 30,
-                      ),
+                      padding: EdgeInsets.only(top: 30),
                       child: Center(
-                        child:
-                            CircularProgressIndicator(
+                        child: CircularProgressIndicator(
                           color: Colors.white,
                         ),
                       ),
                     )
                   else if (notifications.isEmpty)
                     const Padding(
-                      padding:
-                          EdgeInsets.only(
-                        top: 30,
-                      ),
+                      padding: EdgeInsets.only(top: 30),
                       child: Center(
                         child: Text(
                           'No notifications yet.',
                           style: TextStyle(
-                            color:
-                                Colors.white,
-                            fontFamily:
-                                'Georgia',
+                            color: Colors.white,
+                            fontFamily: 'Georgia',
                             fontSize: 12,
                           ),
                         ),
@@ -437,9 +317,7 @@ class _NotificationsScreenState
                   else
                     ...notifications.map(
                       (notification) =>
-                          _notificationCard(
-                        notification,
-                      ),
+                          _notificationCard(notification),
                     ),
                 ],
               ),
@@ -450,12 +328,8 @@ class _NotificationsScreenState
     );
   }
 
-  // ============================================================
   // TOP NAVIGATION
-  // ============================================================
-
-  Widget _buildTopNavigation(
-      BuildContext context) {
+  Widget _buildTopNavigation(BuildContext context) {
     return Container(
       height: 64,
       color: cream,
@@ -471,74 +345,49 @@ class _NotificationsScreenState
                     color: maroon,
                   ),
                   onPressed: () {
-                    Scaffold.of(
-                      drawerContext,
-                    ).openDrawer();
+                    Scaffold.of(drawerContext).openDrawer();
                   },
                 );
               },
             ),
           ),
-
           Expanded(
             child: Row(
-              mainAxisAlignment:
-                  MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _navText(
-                  'Top 10',
-                  activeNav == 'Top 10',
-                  () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            const TopBooksScreen(),
-                      ),
-                    );
-                  },
-                ),
-
+                _navText('Top 10', activeNav == 'Top 10', () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const TopBooksScreen(),
+                    ),
+                  );
+                }),
                 const SizedBox(width: 20),
-
-                _navText(
-                  'History',
-                  activeNav == 'History',
-                  () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            const HistoryScreen(),
-                      ),
-                    );
-                  },
-                ),
-
+                _navText('History', activeNav == 'History', () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const HistoryScreen(),
+                    ),
+                  );
+                }),
                 const SizedBox(width: 20),
-
-                _navText(
-                  'Favorites',
-                  activeNav == 'Favorites',
-                  () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            const FavoritesScreen(),
-                      ),
-                    );
-                  },
-                ),
+                _navText('Favorites', activeNav == 'Favorites', () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const FavoritesScreen(),
+                    ),
+                  );
+                }),
               ],
             ),
           ),
-
           SizedBox(
             width: 114,
             child: Row(
-              mainAxisAlignment:
-                  MainAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 SizedBox(
                   width: 38,
@@ -549,10 +398,9 @@ class _NotificationsScreenState
                       color: maroon,
                       size: 22,
                     ),
-                    onPressed: () {},
+                    onPressed: _loadNotifications,
                   ),
                 ),
-
                 SizedBox(
                   width: 38,
                   child: IconButton(
@@ -565,7 +413,6 @@ class _NotificationsScreenState
                     onPressed: () {},
                   ),
                 ),
-
                 SizedBox(
                   width: 38,
                   child: IconButton(
@@ -579,8 +426,7 @@ class _NotificationsScreenState
                       Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              const SearchScreen(),
+                          builder: (context) => const SearchScreen(),
                         ),
                       );
                     },
@@ -594,10 +440,7 @@ class _NotificationsScreenState
     );
   }
 
-  // ============================================================
   // NAVIGATION TEXT
-  // ============================================================
-
   Widget _navText(
     String text,
     bool isActive,
@@ -606,13 +449,9 @@ class _NotificationsScreenState
     return TextButton(
       onPressed: onPressed,
       style: TextButton.styleFrom(
-        padding:
-            const EdgeInsets.symmetric(
-          horizontal: 4,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
         minimumSize: Size.zero,
-        tapTargetSize:
-            MaterialTapTargetSize.shrinkWrap,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       child: Text(
         text,
@@ -621,92 +460,128 @@ class _NotificationsScreenState
           fontFamily: 'Georgia',
           fontSize: 14,
           fontWeight:
-              isActive
-                  ? FontWeight.bold
-                  : FontWeight.normal,
+              isActive ? FontWeight.bold : FontWeight.normal,
         ),
       ),
     );
   }
 
-  // ============================================================
   // NOTIFICATION CARD
-  // ============================================================
-
   Widget _notificationCard(
     Map<String, dynamic> notification,
   ) {
+    final isRead = notification['is_read'] == true;
+
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(
+      padding: const EdgeInsets.symmetric(
         horizontal: 16,
         vertical: 6,
       ),
       child: Container(
-        padding:
-            const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: cream,
-          borderRadius:
-              BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isRead ? cream : Colors.white,
+            width: isRead ? 1 : 2,
+          ),
         ),
         child: Row(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(
-              notification['icon'],
+              notification['icon'] as IconData,
               color: maroon,
               size: 24,
             ),
-
             const SizedBox(width: 12),
-
             Expanded(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    notification['title'],
-                    style:
-                        const TextStyle(
-                      color: maroon,
-                      fontFamily:
-                          'Georgia',
-                      fontSize: 14,
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          notification['title']?.toString() ??
+                              'Notification',
+                          style: TextStyle(
+                            color: maroon,
+                            fontFamily: 'Georgia',
+                            fontSize: 14,
+                            fontWeight: isRead
+                                ? FontWeight.normal
+                                : FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      if (!isRead)
+                        const Text(
+                          'NEW',
+                          style: TextStyle(
+                            color: maroon,
+                            fontFamily: 'Georgia',
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                    ],
                   ),
-
                   const SizedBox(height: 4),
-
                   Text(
-                    notification['message'],
-                    style:
-                        const TextStyle(
+                    notification['message']?.toString() ?? '',
+                    style: const TextStyle(
                       color: maroon,
-                      fontFamily:
-                          'Georgia',
+                      fontFamily: 'Georgia',
                       fontSize: 12,
                     ),
                   ),
-
                   const SizedBox(height: 6),
-
                   Text(
-                    notification['time'],
-                    style:
-                        const TextStyle(
+                    notification['time']?.toString() ?? '',
+                    style: const TextStyle(
                       color: maroon,
-                      fontFamily:
-                          'Georgia',
+                      fontFamily: 'Georgia',
                       fontSize: 10,
-                      fontStyle:
-                          FontStyle.italic,
+                      fontStyle: FontStyle.italic,
                     ),
                   ),
+                  const SizedBox(height: 6),
+
+                  if (!isRead)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () => _markAsRead(notification),
+                        icon: const Icon(
+                          Icons.check_circle_outline,
+                          size: 16,
+                          color: maroon,
+                        ),
+                        label: const Text(
+                          'Mark as read',
+                          style: TextStyle(
+                            color: maroon,
+                            fontFamily: 'Georgia',
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    const Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        'Read',
+                        style: TextStyle(
+                          color: maroon,
+                          fontFamily: 'Georgia',
+                          fontSize: 10,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),

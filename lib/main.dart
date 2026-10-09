@@ -17,6 +17,32 @@ Future<void> main() async {
   runApp(const ReadscapeApp());
 }
 
+Future<void> createNotification({
+  required String type,
+  required String title,
+  required String message,
+  String? bookTitle,
+}) async {
+  try {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+
+    if (user == null) {
+      return;
+    }
+
+    await supabase.from('notifications').insert({
+      'user_id': user.id,
+      'type': type,
+      'title': title,
+      'message': message,
+      'book_title': bookTitle,
+    });
+  } catch (error) {
+    debugPrint('Could not create notification: $error');
+  }
+}
+
 class ReadscapeApp extends StatelessWidget {
   const ReadscapeApp({super.key});
 
